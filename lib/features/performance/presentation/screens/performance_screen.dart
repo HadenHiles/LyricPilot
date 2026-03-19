@@ -228,9 +228,14 @@ class _SectionBadge extends StatelessWidget {
 
 // ─── Lines view ───────────────────────────────────────────────────────────────
 
-/// Karaoke-style lyric display: the active line is anchored at ~25 % from the
-/// top so the player can always read ahead. Lines animate between dim and bright
-/// as [activeIndex] changes, and the list scrolls smoothly to follow.
+/// Spotify-style lyric display driven by a single [AnimationController].
+///
+/// [_fi] is a fractional active-index animation that moves continuously from
+/// the old integer [activeIndex] to the new one.  On every animation tick
+/// **every** derived property — y-position, font scale, opacity, accent-bar
+/// alpha, and chord tint — is computed from [_fi.value] in the same
+/// [AnimatedBuilder] pass.  There is no ListView, no Scrollable.ensureVisible,
+/// no postFrameCallback, and no frame-delayed scroll jump.
 class _LinesView extends StatefulWidget {
   final List<SongLine> lines;
   final int activeIndex;
@@ -238,160 +243,186 @@ class _LinesView extends StatefulWidget {
   final double fontSize;
   final double lineSpacing;
 
-  const _LinesView({required this.lines, required this.activeIndex, required this.activeChordIndex, required this.fontSize, required this.lineSpacing});
+  const _LinesView({
+    required this.lines,
+    required this.activeIndex,
+    required this.activeChordIndex,
+    required this.fontSize,
+    required this.lineSpacing,
+  });
 
   @override
   State<_LinesView> createState() => _LinesViewState();
 }
 
-class _LinesViewState extends State<_LinesView> {
-  final _scrollController = ScrollController();
-  final _lineKeys = <int, GlobalKey>{};
+class _LinesViewState extends State<_LinesView>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
 
-  GlobalKey _keyFor(int index) => _lineKeys.putIfAbsent(index, GlobalKey.new);
+  /// Fractional active-index.  Animates 2.0 → 3.0 as the player moves from
+  /// line 2 to line 3, giving perfectly continuous transitions.
+  late Animation<double> _fi;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive(snap: true));
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    );
+    // Start positioned correctly — no entry animation needed.
+    _fi = AlwaysStoppedAnimation(widget.activeIndex.toDouble());
   }
 
   @override
   void didUpdateWidget(_LinesView old) {
     super.didUpdateWidget(old);
     if (!identical(old.lines, widget.lines)) {
-      _lineKeys.clear();
-    }
-    if (!identical(old.lines, widget.lines) || old.activeIndex != widget.activeIndex) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive(snap: !identical(old.lines, widget.lines)));
+      // Section change — snap to the new section's first line instantly.
+      _ctrl.stop();
+      _fi = AlwaysStoppedAnimation(widget.activeIndex.toDouble());
+    } else if (old.activeIndex != widget.activeIndex) {
+      // Line advance / retreat — animate from wherever _fi currently is.
+      final from = _fi.value;
+      _fi = Tween<double>(begin: from, end: widget.activeIndex.toDouble())
+          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic));
+      _ctrl.forward(from: 0);
     }
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
-  void _scrollToActive({bool snap = false}) {
-    if (!mounted) return;
-    final ctx = _keyFor(widget.activeIndex).currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(ctx, duration: snap ? Duration.zero : const Duration(milliseconds: 520), curve: Curves.easeInOutQuart, alignment: 0.25);
+  // ── Continuous visual ramps (accept fractional rel, not int) ──────────────
+
+  /// Scale: 1.0 at rel=0, tapering by ~9 % per step, floor 0.70.
+  double _scale(double rel) => (1.0 - rel.abs() * 0.092).clamp(0.70, 1.0);
+
+  /// Opacity: upcoming lines fade more gently than past lines.
+  double _opacity(double rel) {
+    if (rel >= 0) return (1.0 - rel * 0.27).clamp(0.12, 1.0);
+    return (1.0 + rel * 0.34).clamp(0.10, 1.0);
   }
 
-  // Opacity ramp: 0 = active, +N = upcoming, -N = past.
-  double _targetOpacity(int rel) => switch (rel) {
-    0 => 1.00,
-    1 => 0.68,
-    2 => 0.42,
-    3 => 0.24,
-    >= 4 => 0.14,
-    -1 => 0.38,
-    -2 => 0.20,
-    _ => 0.10,
-  };
-
-  // Font-scale ramp — active line is largest, shrinks progressively away.
-  double _targetScale(int rel) => switch (rel) {
-    0 => 1.00,
-    1 => 0.86,
-    2 => 0.78,
-    >= 3 => 0.72,
-    -1 => 0.80,
-    _ => 0.70,
-  };
+  /// Chord tint: full primary colour near active, dims with distance.
+  double _chordAlpha(double rel) =>
+      rel.abs() < 0.5 ? 1.0 : (_opacity(rel) + 0.1).clamp(0.0, 1.0);
 
   @override
   Widget build(BuildContext context) {
     if (widget.lines.isEmpty) {
       return const Center(
-        child: Text('No lines in this section.', style: TextStyle(color: Colors.white24, fontSize: 16)),
+        child: Text(
+          'No lines in this section.',
+          style: TextStyle(color: Colors.white24, fontSize: 16),
+        ),
       );
     }
 
     final cs = Theme.of(context).colorScheme;
-    // Shared animation config — all animated properties use the same timing
-    // so every visual change (size, opacity, pill, accent bar) moves together.
-    const dur = Duration(milliseconds: 380);
-    const crv = Curves.easeInOutCubic;
 
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.only(bottom: 200),
-      itemCount: widget.lines.length,
-      itemBuilder: (context, index) {
-        final rel = index - widget.activeIndex;
-        final isActive = rel == 0;
-        final opacity = _targetOpacity(rel);
-        final targetScale = _targetScale(rel);
-        // Upcoming line (+1) keeps an elevated chord tint so the player can
-        // see the next chord without it competing with the active line.
-        final chordAlpha = isActive ? 1.0 : (rel == 1 ? 0.82 : 0.72);
+    return LayoutBuilder(builder: (context, constraints) {
+      // Uniform slot height keeps spacing consistent.
+      // chord row height  +  lyric row height  +  top/bottom padding.
+      final slotH = widget.fontSize * 0.60 * 1.15    // chord row
+                  + widget.fontSize * widget.lineSpacing // lyric row
+                  + 26.0;                               // padding
 
-        return KeyedSubtree(
-          key: _keyFor(index),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            // AnimatedOpacity handles overall line brightness transitions.
-            child: AnimatedOpacity(
-              opacity: opacity,
-              duration: dur,
-              curve: crv,
-              // AnimatedContainer transitions the active-line pill and accent bar.
-              child: AnimatedContainer(
-                duration: dur,
-                curve: crv,
-                padding: isActive ? const EdgeInsets.fromLTRB(0, 10, 16, 10) : const EdgeInsets.fromLTRB(17, 3, 16, 3),
-                decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: isActive ? 0.09 : 0.0),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Accent bar — animates from 0 width to 3 px when active.
-                    AnimatedContainer(
-                      duration: dur,
-                      curve: crv,
-                      width: isActive ? 3.0 : 0.0,
-                      margin: EdgeInsets.only(right: isActive ? 14.0 : 0.0),
-                      decoration: BoxDecoration(
-                        color: cs.primary.withValues(alpha: isActive ? 1.0 : 0.0),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    // TweenAnimationBuilder drives the font-size change smoothly
-                    // so the active line "snaps into focus" by growing larger
-                    // rather than jumping to a new size instantly.
-                    Expanded(
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween<double>(end: targetScale),
-                        duration: dur,
-                        curve: crv,
-                        builder: (ctx, scale, _) => ChordLyricLine(
-                          line: widget.lines[index],
-                          lyricStyle: TextStyle(color: Colors.white, fontSize: widget.fontSize * scale, height: widget.lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400),
+      // Active line anchored at 22 % from top — plenty of read-ahead below.
+      final anchorY = constraints.maxHeight * 0.22;
+
+      return ClipRect(
+        child: AnimatedBuilder(
+          animation: _fi,
+          builder: (context, _) {
+            final fi = _fi.value;
+            final items = <Widget>[];
+
+            for (var i = 0; i < widget.lines.length; i++) {
+              final rel  = i - fi;
+              final yPos = anchorY + rel * slotH;
+
+              // Skip lines that are off-screen (±1 slot margin so lines
+              // animate smoothly into/out-of view from just off the edge).
+              if (yPos < -slotH || yPos > constraints.maxHeight + slotH) {
+                continue;
+              }
+
+              final sc       = _scale(rel);
+              final op       = _opacity(rel);
+              final ca       = _chordAlpha(rel);
+              final barA     = (1.0 - rel.abs()).clamp(0.0, 1.0);
+              final pillA    = barA * 0.09;
+              final isActive = rel.abs() < 0.3;
+
+              items.add(Positioned(
+                left: 0,
+                right: 0,
+                top: yPos,
+                child: Opacity(
+                  opacity: op,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Background pill — alpha tracks proximity to active.
+                      // Fixed 17 px left indent on all lines so the text
+                      // column never shifts as the accent bar fades in.
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(17, 8, 16, 8),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withValues(alpha: pillA),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: ChordLyricLine(
+                          line: widget.lines[i],
+                          lyricStyle: TextStyle(
+                            color: Colors.white,
+                            fontSize: widget.fontSize * sc,
+                            height: widget.lineSpacing,
+                            fontWeight: isActive
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
                           chordStyle: TextStyle(
-                            color: cs.primary.withValues(alpha: chordAlpha),
-                            fontSize: widget.fontSize * 0.60 * scale,
+                            color: cs.primary.withValues(alpha: ca),
+                            fontSize: widget.fontSize * 0.60 * sc,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.5,
                             height: 1.1,
                           ),
                           displayMode: ChordDisplayMode.stacked,
-                          activeChordIndex: isActive ? widget.activeChordIndex : -1,
+                          activeChordIndex:
+                              isActive ? widget.activeChordIndex : -1,
                         ),
                       ),
-                    ),
-                  ],
+
+                      // Left accent bar — fades in / out with barA.
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 3,
+                          decoration: BoxDecoration(
+                            color: cs.primary.withValues(alpha: barA),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
+              ));
+            }
+
+            return Stack(clipBehavior: Clip.hardEdge, children: items);
+          },
+        ),
+      );
+    });
   }
 }
 
