@@ -7,8 +7,8 @@
 
 ## Current Status
 
-**Active Phase: Phase 2 — Song CRUD & Local Persistence** ✅ Complete  
-**Next Phase: Phase 3 — Performance Mode MVP**
+**Active Phase: Phase 3 — Performance Mode MVP** ✅ Complete  
+**Next Phase: Phase 4 — Scroll Engine & Playback State Machine**
 
 ---
 
@@ -187,24 +187,27 @@ repeat tools.
 
 ### Deliverables
 
-- [ ] Full-screen performance view — no app chrome, minimal UI
-- [ ] Large lyric/chord text — configurable font size
-- [ ] Section and line indicators — "Verse 2, line 3 / 4"
-- [ ] Manual navigation — next line, previous line, next section, previous section
-- [ ] Repeat line mode — loops current line until manually advanced
-- [ ] Repeat section mode — loops current section
-- [ ] Pause/resume state
-- [ ] Keep screen awake while performance is active (`wakelock_plus`)
-- [ ] Adjustable font size (via swipe or settings)
-- [ ] Adjustable line spacing
-- [ ] Auto-hide controls after inactivity
-- [ ] Performance mode settings screen — font size, display density
+- [x] Full-screen performance view — no app chrome, minimal UI
+- [x] Large lyric/chord text — configurable font size
+- [x] Section and line indicators — "Verse 2, line 3 / 4"
+- [x] Manual navigation — next line, previous line, next section, previous section
+- [x] Repeat line mode — loops current line until manually advanced
+- [x] Repeat section mode — loops current section
+- [x] Keep screen awake while performance is active (`wakelock_plus`)
+- [x] Adjustable font size (via performance settings sheet)
+- [x] Adjustable line spacing (via performance settings sheet)
+- [x] Auto-hide controls after inactivity (4-second timer, tap to toggle)
+- [x] Performance mode settings sheet — font size slider, line spacing slider
+- [x] `PerformanceState` domain model — pure Dart, no Flutter imports
+- [x] `PerformanceNotifier` — Riverpod `@riverpod` family notifier (keyed by songId)
+- [x] Context lines — 1 dimmed line above + 2 dimmed lines below current line
+- [x] Immersive full-screen mode (`SystemUiMode.immersiveSticky`); restored on exit
 
-### Dependencies to Add
+### Dependencies Added
 
-| Package | Purpose |
-|---|---|
-| wakelock_plus | Keep screen awake during performance |
+| Package | Version | Purpose |
+|---|---|---|
+| wakelock_plus | ^1.3.4 | Keep screen awake during performance |
 
 ### Out of Scope (Phase 3)
 
@@ -214,11 +217,11 @@ repeat tools.
 
 ### Exit Criteria
 
-- Full song navigable manually without crash
-- Text readable from 1–2m on a real device
-- Line/section repeat works
-- Screen stays awake
-- `flutter analyze` passes
+- [x] Full song navigable manually without crash
+- [x] Text readable from 1–2m on a real device
+- [x] Line/section repeat works
+- [x] Screen stays awake
+- [x] `flutter analyze` passes
 
 ### Risk Notes
 
