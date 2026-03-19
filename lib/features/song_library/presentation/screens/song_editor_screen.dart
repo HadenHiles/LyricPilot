@@ -8,6 +8,7 @@ import '../../domain/models/section_type.dart';
 import '../../domain/models/song.dart';
 import '../../domain/models/song_line.dart';
 import '../../domain/models/song_section.dart';
+import '../../domain/lyric_parser.dart';
 import '../providers/song_library_provider.dart';
 
 // ─────────────────────────────────────────────────────────
@@ -174,6 +175,81 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
     _sections.removeAt(i);
   });
 
+  void _importParsed(List<ParsedSection> parsed) {
+    for (final s in _sections) {
+      s.dispose();
+    }
+    _sections.clear();
+    int seq = 0;
+    for (final p in parsed) {
+      final lines = p.lines.where((l) => l.trim().isNotEmpty).map((l) => _EditableLine(id: 'line_${DateTime.now().microsecondsSinceEpoch}_${seq++}', lyric: l)).toList();
+      _sections.add(_EditableSection(id: 'id_${DateTime.now().millisecondsSinceEpoch}_${seq++}', name: p.name, type: p.type, lines: lines));
+    }
+    setState(() {});
+  }
+
+  Future<void> _showPasteSheet() async {
+    final parsed = await showModalBottomSheet<List<ParsedSection>?>(context: context, isScrollControlled: true, useSafeArea: true, builder: (_) => const _PasteLyricsSheet());
+    if (parsed == null || !mounted) return;
+    if (_sections.isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Replace content?'),
+          content: const Text('This will replace the existing sections with the pasted song.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Replace')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    _importParsed(parsed);
+    if (mounted) {
+      final n = _sections.length;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $n section${n == 1 ? '' : 's'}'), behavior: SnackBarBehavior.floating));
+    }
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.content_paste_rounded, size: 36, color: cs.onSurfaceVariant.withValues(alpha: 0.45)),
+            const SizedBox(height: 12),
+            Text('Have the lyrics ready?', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text(
+              'Paste the full song and sections are detected automatically.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _showPasteSheet,
+              icon: const Icon(Icons.content_paste_rounded, size: 18),
+              label: const Text('Paste Full Song'),
+              style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 44)),
+            ),
+            const SizedBox(height: 10),
+            Text('— or add sections manually below —', style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.45))),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
@@ -205,6 +281,7 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       appBar: AppBar(
         title: Text(_isEditing ? 'Edit Song' : 'New Song'),
         actions: [
+          if (!_saving) IconButton(icon: const Icon(Icons.content_paste_rounded), tooltip: 'Paste full song', onPressed: _showPasteSheet),
           if (_saving)
             const Padding(
               padding: EdgeInsets.all(16),
@@ -226,8 +303,9 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
             ),
             const SizedBox(height: 16),
             ...List.generate(_sections.length, (i) => _SectionEditor(key: ValueKey(_sections[i].id), section: _sections[i], onRemove: () => _removeSection(i))),
+            if (_sections.isEmpty) _buildEmptyState(context),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: OutlinedButton.icon(
                 onPressed: _addSection,
                 icon: const Icon(Icons.add, size: 16),
@@ -790,6 +868,160 @@ class _ChordPickerDialogState extends State<_ChordPickerDialog> {
         TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Cancel')),
         FilledButton(onPressed: () => Navigator.pop(context, _ctrl.text.trim()), child: const Text('Done')),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Paste full-song sheet
+// ─────────────────────────────────────────────────────────
+
+class _PasteLyricsSheet extends StatefulWidget {
+  const _PasteLyricsSheet();
+
+  @override
+  State<_PasteLyricsSheet> createState() => _PasteLyricsSheetState();
+}
+
+class _PasteLyricsSheetState extends State<_PasteLyricsSheet> {
+  final _ctrl = TextEditingController();
+  List<ParsedSection>? _preview;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _detect() {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) return;
+    setState(() => _preview = LyricParser.parse(text));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, scrollCtrl) => Column(
+          children: [
+            // drag handle
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)),
+            ),
+            // header row
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 16, 8),
+              child: Row(
+                children: [
+                  Text('Paste Full Song', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                ],
+              ),
+            ),
+            // scrollable body
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // paste area
+                    TextField(
+                      controller: _ctrl,
+                      maxLines: null,
+                      minLines: 8,
+                      autofocus: true,
+                      autocorrect: false,
+                      textCapitalization: TextCapitalization.sentences,
+                      onChanged: (_) {
+                        if (_preview != null) setState(() => _preview = null);
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Paste your song here…\n\nLabels like [Verse 1], Chorus:, or BRIDGE are detected automatically. Without labels, repeated blocks are identified as the chorus.',
+                        hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.4), fontSize: 13),
+                        hintMaxLines: 6,
+                        filled: true,
+                        fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.all(14),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // detect / import button
+                    if (_preview == null)
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _detect,
+                          icon: const Icon(Icons.auto_awesome, size: 18),
+                          label: const Text('Detect Sections'),
+                          style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 46)),
+                        ),
+                      )
+                    else ...[
+                      // preview list
+                      Text(
+                        'Detected ${_preview!.length} section${_preview!.length == 1 ? '' : 's'}',
+                        style: theme.textTheme.labelLarge?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 10),
+                      ..._preview!.map(
+                        (s) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(color: cs.primaryContainer.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(6)),
+                                child: Text(
+                                  s.type.displayName,
+                                  style: theme.textTheme.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(child: Text(s.name, style: theme.textTheme.bodyMedium)),
+                              Text('${s.lines.length} line${s.lines.length == 1 ? '' : 's'}', style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(onPressed: () => setState(() => _preview = null), child: const Text('Re-paste')),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: FilledButton.icon(onPressed: () => Navigator.pop(context, _preview), icon: const Icon(Icons.check, size: 18), label: const Text('Import Song')),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
