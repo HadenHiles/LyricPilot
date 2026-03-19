@@ -15,12 +15,19 @@ final _privateConstructorUsedError = UnsupportedError(
   'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models',
 );
 
+SongSection _$SongSectionFromJson(Map<String, dynamic> json) {
+  return _SongSection.fromJson(json);
+}
+
 /// @nodoc
 mixin _$SongSection {
   String get id => throw _privateConstructorUsedError;
   String get name => throw _privateConstructorUsedError;
   SectionType get type => throw _privateConstructorUsedError;
   List<SongLine> get lines => throw _privateConstructorUsedError;
+
+  /// Serializes this SongSection to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
   /// Create a copy of SongSection
   /// with the given fields replaced by the non-null parameter values.
@@ -138,7 +145,7 @@ class __$$SongSectionImplCopyWithImpl<$Res>
 }
 
 /// @nodoc
-
+@JsonSerializable()
 class _$SongSectionImpl extends _SongSection {
   const _$SongSectionImpl({
     required this.id,
@@ -147,6 +154,9 @@ class _$SongSectionImpl extends _SongSection {
     final List<SongLine> lines = const [],
   }) : _lines = lines,
        super._();
+
+  factory _$SongSectionImpl.fromJson(Map<String, dynamic> json) =>
+      _$$SongSectionImplFromJson(json);
 
   @override
   final String id;
@@ -179,6 +189,7 @@ class _$SongSectionImpl extends _SongSection {
             const DeepCollectionEquality().equals(other._lines, _lines));
   }
 
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
     runtimeType,
@@ -195,6 +206,11 @@ class _$SongSectionImpl extends _SongSection {
   @pragma('vm:prefer-inline')
   _$$SongSectionImplCopyWith<_$SongSectionImpl> get copyWith =>
       __$$SongSectionImplCopyWithImpl<_$SongSectionImpl>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$SongSectionImplToJson(this);
+  }
 }
 
 abstract class _SongSection extends SongSection {
@@ -205,6 +221,9 @@ abstract class _SongSection extends SongSection {
     final List<SongLine> lines,
   }) = _$SongSectionImpl;
   const _SongSection._() : super._();
+
+  factory _SongSection.fromJson(Map<String, dynamic> json) =
+      _$SongSectionImpl.fromJson;
 
   @override
   String get id;

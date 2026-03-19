@@ -10,7 +10,7 @@ import '../widgets/chord_lyric_line.dart';
 
 /// Shows a song's full content — metadata, sections, and chord/lyric lines.
 ///
-/// From here the user can launch performance mode.
+/// From here the user can launch performance mode or edit/delete the song.
 class SongDetailScreen extends ConsumerWidget {
   final String songId;
 
@@ -31,13 +31,19 @@ class SongDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(song.title),
         actions: [
-          // TODO(phase-2): edit action
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit song',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Song editing coming in Phase 2'), behavior: SnackBarBehavior.floating));
-            },
+          IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit song', onPressed: () => context.push('/song/$songId/edit')),
+          PopupMenuButton<_SongAction>(
+            onSelected: (action) => _handleAction(context, ref, song, action),
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: _SongAction.duplicate,
+                child: ListTile(leading: Icon(Icons.copy_outlined), title: Text('Duplicate'), dense: true),
+              ),
+              PopupMenuItem(
+                value: _SongAction.delete,
+                child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Delete'), dense: true),
+              ),
+            ],
           ),
         ],
       ),
@@ -56,7 +62,39 @@ class SongDetailScreen extends ConsumerWidget {
       bottomNavigationBar: _PerformanceBar(song: song),
     );
   }
+
+  Future<void> _handleAction(BuildContext context, WidgetRef ref, Song song, _SongAction action) async {
+    switch (action) {
+      case _SongAction.duplicate:
+        await ref.read(songLibraryNotifierProvider.notifier).duplicate(song.id);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('"${song.title}" duplicated'), behavior: SnackBarBehavior.floating));
+        }
+      case _SongAction.delete:
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Delete song?'),
+            content: Text('This will permanently delete "${song.title}". This cannot be undone.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true) {
+          await ref.read(songLibraryNotifierProvider.notifier).delete(song.id);
+          if (context.mounted) context.go('/');
+        }
+    }
+  }
 }
+
+enum _SongAction { duplicate, delete }
 
 class _SongHeader extends StatelessWidget {
   final Song song;

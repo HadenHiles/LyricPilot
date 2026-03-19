@@ -6,29 +6,7 @@ part of 'song_library_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$songLibraryHash() => r'6561752dc907191dd6e7b683f2696d0684bf7672';
-
-/// Provides the full song library.
-///
-/// Phase 0: returns the hard-coded in-memory [sampleSongs] list.
-/// Phase 2: will be replaced with an AsyncNotifier backed by Isar.
-///
-/// Copied from [songLibrary].
-@ProviderFor(songLibrary)
-final songLibraryProvider = AutoDisposeProvider<List<Song>>.internal(
-  songLibrary,
-  name: r'songLibraryProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$songLibraryHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
-
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef SongLibraryRef = AutoDisposeProviderRef<List<Song>>;
-String _$filteredSongsHash() => r'34d1cdf4631d3ba67ff22dc880d3792b9f206abc';
+String _$filteredSongsHash() => r'a79983121fba88137207f3598ab2e986daea0e1a';
 
 /// Songs filtered by the current [songSearchQueryProvider] value.
 ///
@@ -47,7 +25,7 @@ final filteredSongsProvider = AutoDisposeProvider<List<Song>>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef FilteredSongsRef = AutoDisposeProviderRef<List<Song>>;
-String _$songByIdHash() => r'80fa4d747475b50434cec2c3359415dca1730f77';
+String _$songByIdHash() => r'7ea95bdf4e144207a12c829aa821626c99dc90d3';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -194,5 +172,27 @@ class _SongByIdProviderElement extends AutoDisposeProviderElement<Song?>
   String get id => (origin as SongByIdProvider).id;
 }
 
+String _$songLibraryNotifierHash() =>
+    r'f3c996696940e982d41e3df1ad03a57337e94edd';
+
+/// The authoritative song library, backed by [SongRepository].
+///
+/// On first launch the repository is empty — it is seeded with [sampleSongs].
+/// Exposes [save] and [delete] to mutate the library and invalidate itself.
+///
+/// Copied from [SongLibraryNotifier].
+@ProviderFor(SongLibraryNotifier)
+final songLibraryNotifierProvider =
+    AutoDisposeAsyncNotifierProvider<SongLibraryNotifier, List<Song>>.internal(
+      SongLibraryNotifier.new,
+      name: r'songLibraryNotifierProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$songLibraryNotifierHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+typedef _$SongLibraryNotifier = AutoDisposeAsyncNotifier<List<Song>>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

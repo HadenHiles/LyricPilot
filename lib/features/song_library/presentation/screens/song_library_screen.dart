@@ -7,14 +7,12 @@ import '../providers/song_library_provider.dart';
 import '../widgets/song_list_tile.dart';
 
 /// The home screen — shows the user's song library with live search.
-///
-/// Phase 1: in-memory sample songs with search filtering.
-/// Phase 2: will show songs from the Isar database.
 class SongLibraryScreen extends ConsumerWidget {
   const SongLibraryScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final songsAsync = ref.watch(songLibraryNotifierProvider);
     final songs = ref.watch(filteredSongsProvider);
     final query = ref.watch(songSearchQueryProvider);
 
@@ -27,24 +25,21 @@ class SongLibraryScreen extends ConsumerWidget {
         children: [
           _SearchBar(query: query, onChanged: (value) => ref.read(songSearchQueryProvider.notifier).state = value),
           Expanded(
-            child: songs.isEmpty
-                ? _EmptyLibrary(isSearchActive: query.trim().isNotEmpty)
-                : ListView.builder(
-                    padding: const EdgeInsets.only(top: 8, bottom: 96),
-                    itemCount: songs.length,
-                    itemBuilder: (context, index) => SongListTile(song: songs[index]),
-                  ),
+            child: songsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error loading songs: $e')),
+              data: (_) => songs.isEmpty
+                  ? _EmptyLibrary(isSearchActive: query.trim().isNotEmpty)
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(top: 8, bottom: 96),
+                      itemCount: songs.length,
+                      itemBuilder: (context, index) => SongListTile(song: songs[index]),
+                    ),
+            ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // TODO(phase-2): navigate to song create screen
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Song creation coming in Phase 2'), behavior: SnackBarBehavior.floating));
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add Song'),
-      ),
+      floatingActionButton: FloatingActionButton.extended(onPressed: () => context.push('/song/new'), icon: const Icon(Icons.add), label: const Text('Add Song')),
     );
   }
 }

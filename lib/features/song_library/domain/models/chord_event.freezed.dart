@@ -15,10 +15,17 @@ final _privateConstructorUsedError = UnsupportedError(
   'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models',
 );
 
+ChordEvent _$ChordEventFromJson(Map<String, dynamic> json) {
+  return _ChordEvent.fromJson(json);
+}
+
 /// @nodoc
 mixin _$ChordEvent {
   String get chord => throw _privateConstructorUsedError;
   int? get position => throw _privateConstructorUsedError;
+
+  /// Serializes this ChordEvent to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
   /// Create a copy of ChordEvent
   /// with the given fields replaced by the non-null parameter values.
@@ -110,9 +117,12 @@ class __$$ChordEventImplCopyWithImpl<$Res>
 }
 
 /// @nodoc
-
+@JsonSerializable()
 class _$ChordEventImpl implements _ChordEvent {
   const _$ChordEventImpl({required this.chord, this.position});
+
+  factory _$ChordEventImpl.fromJson(Map<String, dynamic> json) =>
+      _$$ChordEventImplFromJson(json);
 
   @override
   final String chord;
@@ -134,6 +144,7 @@ class _$ChordEventImpl implements _ChordEvent {
                 other.position == position));
   }
 
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(runtimeType, chord, position);
 
@@ -144,6 +155,11 @@ class _$ChordEventImpl implements _ChordEvent {
   @pragma('vm:prefer-inline')
   _$$ChordEventImplCopyWith<_$ChordEventImpl> get copyWith =>
       __$$ChordEventImplCopyWithImpl<_$ChordEventImpl>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$ChordEventImplToJson(this);
+  }
 }
 
 abstract class _ChordEvent implements ChordEvent {
@@ -151,6 +167,9 @@ abstract class _ChordEvent implements ChordEvent {
     required final String chord,
     final int? position,
   }) = _$ChordEventImpl;
+
+  factory _ChordEvent.fromJson(Map<String, dynamic> json) =
+      _$ChordEventImpl.fromJson;
 
   @override
   String get chord;

@@ -60,7 +60,7 @@ cloud sync, or ML-based analysis.
 | State | flutter_riverpod | Provider pattern, AsyncNotifier for async |
 | Navigation | go_router | Typed routes preferred in Phase 2+ |
 | Models | Plain Dart (Phase 0–1), Freezed (Phase 1+) | Immutable, copyWith |
-| Persistence | Isar (Phase 2) | Fast, embedded, no SQL boilerplate |
+| Persistence | JSON files via path_provider (Phase 2+) | One file per song; `SongRepository` abstraction allows swapping |
 | Typography | google_fonts (Inter) | Readable at distance |
 | Code gen | build_runner + freezed + riverpod_generator | Phase 1+ only |
 
@@ -244,4 +244,4 @@ A phase is complete when:
 
 See `docs/roadmap.md` for the authoritative phase tracking.
 
-> Last updated: Phase 0 — Foundation complete.
+> Last updated: Phase 2 — Song CRUD & Local Persistence complete.

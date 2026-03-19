@@ -7,8 +7,8 @@
 
 ## Current Status
 
-**Active Phase: Phase 1 — Domain Models & Song Library UI** ✅ Complete  
-**Next Phase: Phase 2 — Song CRUD & Local Persistence**
+**Active Phase: Phase 2 — Song CRUD & Local Persistence** ✅ Complete  
+**Next Phase: Phase 3 — Performance Mode MVP**
 
 ---
 
@@ -114,40 +114,56 @@ Low risk. Freezed codegen is well-established in Flutter ecosystem.
 ## Phase 2 — Song CRUD & Local Persistence
 
 **Goal:** Let musicians create, edit, duplicate, and delete songs. All data
-survives app restarts via Isar embedded database.
+survives app restarts via JSON file storage on the device.
+
+### Architecture Note — JSON files instead of Isar
+
+Isar 3.x stagnated (no meaningful releases since late 2023). For a song library
+of the expected size (~100 songs max) and data access patterns (simple CRUD,
+no complex queries), per-song JSON files on the device file system are simpler,
+more testable, and more maintainable. The `SongRepository` abstraction
+means the storage backend can be swapped later without touching any UI code.
 
 ### Deliverables
 
-- [ ] Add Isar + isar_flutter_libs + path_provider
-- [ ] `SongRepository` interface in `domain/`
-- [ ] `IsarSongRepository` implementation in `data/`
-- [ ] Song create screen — title, artist, key, BPM, add sections
-- [ ] Song edit screen — in-place editing of sections and lines
-- [ ] Chord event editor — add/edit chords on a line
-- [ ] Delete song with confirmation dialog
-- [ ] Duplicate song
-- [ ] Input validation — non-empty title required
-- [ ] Migration strategy for future schema changes (documented)
-- [ ] Seed Isar with sample songs on first launch
+- [x] Add `json_annotation`, `path_provider` dependencies; `json_serializable` dev dep
+- [x] JSON serialization added to all Freezed models (`fromJson` / `.g.dart`)
+- [x] `SongRepository` abstract interface in `domain/repositories/`
+- [x] `JsonFileSongRepository` in `data/repositories/` — one JSON file per song
+- [x] `songRepositoryProvider` — injectable, overridable in tests
+- [x] `SongLibraryNotifier` — `AsyncNotifier` backed by the repository
+- [x] Seed repository with `sampleSongs` on first launch (empty check)
+- [x] `SongEditorScreen` — create and edit a song's metadata, sections, and lines
+- [x] Inline section editor — name, type picker, reorder/delete sections
+- [x] Inline line editor — lyric text + space-separated chord names per line
+- [x] Chord positions auto-distributed evenly across the lyric on save
+- [x] Input validation — title and artist required, BPM range 20–300
+- [x] Delete song with confirmation dialog (from song detail overflow menu)
+- [x] Duplicate song (from song detail overflow menu)
+- [x] Edit song navigates to `/song/:id/edit`; create navigates to `/song/new`
+- [x] Library FAB now navigates to create screen
+- [x] Library screen handles async loading / error states
 
-### Dependencies to Add
+### Dependencies Added
 
-| Package | Purpose |
-|---|---|
-| isar | Embedded NoSQL database |
-| isar_flutter_libs | Native Isar binaries |
-| path_provider | Locate device file system paths |
-| isar_generator (dev) | Generates Isar schema code |
-
-**Why Isar over Hive:** Isar has a strongly-typed query API, full indexing
-support, and better performance for the data access patterns we need (song list
-filtering, section lookup). Hive is simpler but lacks query power.
+| Package | Version | Purpose |
+|---|---|---|
+| json_annotation | ^4.9.0 | JSON serialization annotations |
+| path_provider | ^2.1.5 | Locate device file system paths |
+| json_serializable (dev) | ^6.9.0 | JSON code generation |
 
 ### Out of Scope (Phase 2)
 
-- Performance mode features (Phase 3)
+- Per-character chord position editing (Phase 3 enhancement)
 - Import/export (future phase)
 - Cloud backup (non-goal)
+
+### Exit Criteria
+
+- [x] Songs persist across app restarts
+- [x] CRUD operations all work and `flutter analyze` passes with zero issues
+- [x] Empty state handled gracefully on first launch (seeded with sample songs)
+- [x] Existing Phase 0–1 UI remains functional
 
 ### Exit Criteria
 

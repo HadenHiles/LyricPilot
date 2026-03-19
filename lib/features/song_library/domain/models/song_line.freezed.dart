@@ -15,11 +15,18 @@ final _privateConstructorUsedError = UnsupportedError(
   'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models',
 );
 
+SongLine _$SongLineFromJson(Map<String, dynamic> json) {
+  return _SongLine.fromJson(json);
+}
+
 /// @nodoc
 mixin _$SongLine {
   String get id => throw _privateConstructorUsedError;
   String get lyric => throw _privateConstructorUsedError;
   List<ChordEvent> get chords => throw _privateConstructorUsedError;
+
+  /// Serializes this SongLine to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
   /// Create a copy of SongLine
   /// with the given fields replaced by the non-null parameter values.
@@ -117,7 +124,7 @@ class __$$SongLineImplCopyWithImpl<$Res>
 }
 
 /// @nodoc
-
+@JsonSerializable()
 class _$SongLineImpl extends _SongLine {
   const _$SongLineImpl({
     required this.id,
@@ -125,6 +132,9 @@ class _$SongLineImpl extends _SongLine {
     final List<ChordEvent> chords = const [],
   }) : _chords = chords,
        super._();
+
+  factory _$SongLineImpl.fromJson(Map<String, dynamic> json) =>
+      _$$SongLineImplFromJson(json);
 
   @override
   final String id;
@@ -154,6 +164,7 @@ class _$SongLineImpl extends _SongLine {
             const DeepCollectionEquality().equals(other._chords, _chords));
   }
 
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
     runtimeType,
@@ -169,6 +180,11 @@ class _$SongLineImpl extends _SongLine {
   @pragma('vm:prefer-inline')
   _$$SongLineImplCopyWith<_$SongLineImpl> get copyWith =>
       __$$SongLineImplCopyWithImpl<_$SongLineImpl>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$SongLineImplToJson(this);
+  }
 }
 
 abstract class _SongLine extends SongLine {
@@ -178,6 +194,9 @@ abstract class _SongLine extends SongLine {
     final List<ChordEvent> chords,
   }) = _$SongLineImpl;
   const _SongLine._() : super._();
+
+  factory _SongLine.fromJson(Map<String, dynamic> json) =
+      _$SongLineImpl.fromJson;
 
   @override
   String get id;

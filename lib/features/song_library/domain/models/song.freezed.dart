@@ -15,6 +15,10 @@ final _privateConstructorUsedError = UnsupportedError(
   'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models',
 );
 
+Song _$SongFromJson(Map<String, dynamic> json) {
+  return _Song.fromJson(json);
+}
+
 /// @nodoc
 mixin _$Song {
   String get id => throw _privateConstructorUsedError;
@@ -26,6 +30,9 @@ mixin _$Song {
   List<SongSection> get sections => throw _privateConstructorUsedError;
   DateTime get createdAt => throw _privateConstructorUsedError;
   DateTime get updatedAt => throw _privateConstructorUsedError;
+
+  /// Serializes this Song to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
   /// Create a copy of Song
   /// with the given fields replaced by the non-null parameter values.
@@ -207,7 +214,7 @@ class __$$SongImplCopyWithImpl<$Res>
 }
 
 /// @nodoc
-
+@JsonSerializable()
 class _$SongImpl extends _Song {
   const _$SongImpl({
     required this.id,
@@ -221,6 +228,9 @@ class _$SongImpl extends _Song {
     required this.updatedAt,
   }) : _sections = sections,
        super._();
+
+  factory _$SongImpl.fromJson(Map<String, dynamic> json) =>
+      _$$SongImplFromJson(json);
 
   @override
   final String id;
@@ -271,6 +281,7 @@ class _$SongImpl extends _Song {
                 other.updatedAt == updatedAt));
   }
 
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
     runtimeType,
@@ -292,6 +303,11 @@ class _$SongImpl extends _Song {
   @pragma('vm:prefer-inline')
   _$$SongImplCopyWith<_$SongImpl> get copyWith =>
       __$$SongImplCopyWithImpl<_$SongImpl>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$SongImplToJson(this);
+  }
 }
 
 abstract class _Song extends Song {
@@ -307,6 +323,8 @@ abstract class _Song extends Song {
     required final DateTime updatedAt,
   }) = _$SongImpl;
   const _Song._() : super._();
+
+  factory _Song.fromJson(Map<String, dynamic> json) = _$SongImpl.fromJson;
 
   @override
   String get id;

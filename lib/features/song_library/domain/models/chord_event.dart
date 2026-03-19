@@ -1,6 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'chord_event.freezed.dart';
+part 'chord_event.g.dart';
 
 /// A single chord event attached to a position within a lyric line.
 ///
@@ -10,4 +11,6 @@ part 'chord_event.freezed.dart';
 @freezed
 class ChordEvent with _$ChordEvent {
   const factory ChordEvent({required String chord, int? position}) = _ChordEvent;
+
+  factory ChordEvent.fromJson(Map<String, dynamic> json) => _$ChordEventFromJson(json);
 }

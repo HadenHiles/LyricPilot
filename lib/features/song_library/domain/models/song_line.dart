@@ -3,6 +3,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'chord_event.dart';
 
 part 'song_line.freezed.dart';
+part 'song_line.g.dart';
 
 /// One line in the song — a lyric string paired with zero or more chord events.
 ///
@@ -13,6 +14,8 @@ class SongLine with _$SongLine {
   const SongLine._();
 
   const factory SongLine({required String id, required String lyric, @Default([]) List<ChordEvent> chords}) = _SongLine;
+
+  factory SongLine.fromJson(Map<String, dynamic> json) => _$SongLineFromJson(json);
 
   /// True when this line has chords but no sung lyric (e.g. an intro riff).
   bool get isInstrumental => lyric.isEmpty && chords.isNotEmpty;
