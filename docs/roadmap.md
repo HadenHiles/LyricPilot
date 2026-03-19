@@ -7,8 +7,8 @@
 
 ## Current Status
 
-**Active Phase: Phase 0 — Foundation** ✅ Complete  
-**Next Phase: Phase 1 — Domain Models & Song Library UI**
+**Active Phase: Phase 1 — Domain Models & Song Library UI** ✅ Complete  
+**Next Phase: Phase 2 — Song CRUD & Local Persistence**
 
 ---
 
@@ -70,15 +70,15 @@ rendered correctly.
 
 ### Deliverables
 
-- [ ] Add Freezed + json_serializable + build_runner + riverpod_generator
-- [ ] Migrate domain models to `@freezed` — Song, SongSection, SongLine, ChordEvent
-- [ ] Migrate providers to `@riverpod` annotation style
-- [ ] Song library screen — search/filter, empty state
-- [ ] Song detail screen — full chord/lyric rendering with section headers
-- [ ] `ChordLyricLine` widget — precise inline chord marker rendering
-- [ ] `SectionHeader` widget — styled section label (Verse, Chorus, etc.)
-- [ ] Add 5+ realistic sample songs across different keys
-- [ ] Define `UserSettings` domain model stub
+- [x] Add Freezed + build_runner + riverpod_generator
+- [x] Migrate domain models to `@freezed` — Song, SongSection, SongLine, ChordEvent
+- [x] Migrate providers to `@riverpod` annotation style
+- [x] Song library screen — search/filter by title/artist, empty states
+- [x] Song detail screen — full chord/lyric rendering with section headers
+- [x] `ChordLyricLine` widget — inline and stacked chord display modes
+- [x] App branding — logo in AppBar, adaptive launcher icon from `assets/icon.png`
+- [x] `UserSettings` domain model stub (font size, scroll, audio preferences)
+- [x] `AppLogo` shared widget (theme-matched color filter)
 
 ### Dependencies to Add
 
@@ -99,10 +99,11 @@ rendered correctly.
 
 ### Exit Criteria
 
-- All models are Freezed with `copyWith`, equality, and `toString`
-- `flutter analyze` passes
-- Song detail shows all sections legibly with inline chord markers
-- No regressions from Phase 0
+- All models are Freezed with `copyWith`, equality, and `toString` ✅
+- `flutter analyze` passes ✅
+- Song detail shows all sections legibly with inline chord markers ✅
+- Search bar filters by title and artist in real time ✅
+- No regressions from Phase 0 ✅
 
 ### Risk Notes
 

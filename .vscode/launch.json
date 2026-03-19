@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "LyricPilot (Samsung SM-S928W)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "R3CX20HFZJL",
+      "program": "lib/main.dart"
+    },
+    {
+      "name": "LyricPilot (macOS)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "macos",
+      "program": "lib/main.dart"
+    }
+  ]
+}
