@@ -7,7 +7,7 @@ part of 'performance_provider.dart';
 // **************************************************************************
 
 String _$performanceNotifierHash() =>
-    r'096747c24c971593db445d85db31feb035ef3913';
+    r'8bb0a085d87603feff5fdba10d4dd4d69113ba29';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -39,8 +39,9 @@ abstract class _$PerformanceNotifier
 
 /// Manages the state of an active performance session for [songId].
 ///
-/// Navigation methods respect the current [RepeatMode] before advancing.
-/// All font/spacing mutations clamp to [PerformanceState] bounds.
+/// In Phase 4 the [TimedScrollEngine] drives BPM-based auto-scroll.
+/// Manual navigation calls always override the engine immediately.
+/// Phase 5 will inject audio confidence via [updateConfidence].
 ///
 /// Copied from [PerformanceNotifier].
 @ProviderFor(PerformanceNotifier)
@@ -48,23 +49,26 @@ const performanceNotifierProvider = PerformanceNotifierFamily();
 
 /// Manages the state of an active performance session for [songId].
 ///
-/// Navigation methods respect the current [RepeatMode] before advancing.
-/// All font/spacing mutations clamp to [PerformanceState] bounds.
+/// In Phase 4 the [TimedScrollEngine] drives BPM-based auto-scroll.
+/// Manual navigation calls always override the engine immediately.
+/// Phase 5 will inject audio confidence via [updateConfidence].
 ///
 /// Copied from [PerformanceNotifier].
 class PerformanceNotifierFamily extends Family<PerformanceState> {
   /// Manages the state of an active performance session for [songId].
   ///
-  /// Navigation methods respect the current [RepeatMode] before advancing.
-  /// All font/spacing mutations clamp to [PerformanceState] bounds.
+  /// In Phase 4 the [TimedScrollEngine] drives BPM-based auto-scroll.
+  /// Manual navigation calls always override the engine immediately.
+  /// Phase 5 will inject audio confidence via [updateConfidence].
   ///
   /// Copied from [PerformanceNotifier].
   const PerformanceNotifierFamily();
 
   /// Manages the state of an active performance session for [songId].
   ///
-  /// Navigation methods respect the current [RepeatMode] before advancing.
-  /// All font/spacing mutations clamp to [PerformanceState] bounds.
+  /// In Phase 4 the [TimedScrollEngine] drives BPM-based auto-scroll.
+  /// Manual navigation calls always override the engine immediately.
+  /// Phase 5 will inject audio confidence via [updateConfidence].
   ///
   /// Copied from [PerformanceNotifier].
   PerformanceNotifierProvider call(String songId) {
@@ -95,8 +99,9 @@ class PerformanceNotifierFamily extends Family<PerformanceState> {
 
 /// Manages the state of an active performance session for [songId].
 ///
-/// Navigation methods respect the current [RepeatMode] before advancing.
-/// All font/spacing mutations clamp to [PerformanceState] bounds.
+/// In Phase 4 the [TimedScrollEngine] drives BPM-based auto-scroll.
+/// Manual navigation calls always override the engine immediately.
+/// Phase 5 will inject audio confidence via [updateConfidence].
 ///
 /// Copied from [PerformanceNotifier].
 class PerformanceNotifierProvider
@@ -104,8 +109,9 @@ class PerformanceNotifierProvider
         AutoDisposeNotifierProviderImpl<PerformanceNotifier, PerformanceState> {
   /// Manages the state of an active performance session for [songId].
   ///
-  /// Navigation methods respect the current [RepeatMode] before advancing.
-  /// All font/spacing mutations clamp to [PerformanceState] bounds.
+  /// In Phase 4 the [TimedScrollEngine] drives BPM-based auto-scroll.
+  /// Manual navigation calls always override the engine immediately.
+  /// Phase 5 will inject audio confidence via [updateConfidence].
   ///
   /// Copied from [PerformanceNotifier].
   PerformanceNotifierProvider(String songId)

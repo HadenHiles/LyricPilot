@@ -12,15 +12,14 @@ import '../../../song_library/domain/models/song_section.dart';
 import '../../../song_library/presentation/providers/song_library_provider.dart';
 import '../../../song_library/presentation/widgets/chord_lyric_line.dart';
 import '../../domain/performance_state.dart';
+import '../../domain/playback_state.dart';
 import '../providers/performance_provider.dart';
 
-/// Full-screen performance view — Phase 3.
+/// Full-screen performance view — Phase 3 + 4.
 ///
-/// Dark, distraction-free mode with large lyric/chord text, manual
-/// navigation controls, repeat tools, auto-hiding overlay, and screen-awake
-/// via wakelock_plus.
-///
-/// TODO(phase-4): Wire in timed auto-scroll via ScrollEngine.
+/// Phase 3: manual navigation, repeat modes, auto-hide overlay, wakelock.
+/// Phase 4: BPM-based auto-scroll via [TimedScrollEngine]; play/pause/stop
+///          controls; adjustable tempo multiplier.
 /// TODO(phase-5): Add microphone-assisted position following.
 class PerformanceScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -341,66 +340,137 @@ class _ControlsLayer extends StatelessWidget {
 
         const Spacer(),
 
-        // ── Footer navigation bar ─────────────────────────────────────────
+        // ── Footer (two rows: playback + navigation) ───────────────────────
         Container(
           color: _overlay,
           child: SafeArea(
             top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous_rounded),
-                    color: Colors.white54,
-                    iconSize: 28,
-                    tooltip: 'Previous section',
-                    onPressed: () {
-                      notifier.prevSection();
-                      onInteraction();
-                    },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Row 1: play/pause · stop · speed ─────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // Slower
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline_rounded),
+                        color: Colors.white38,
+                        iconSize: 22,
+                        tooltip: 'Slower',
+                        onPressed: () {
+                          notifier.slowerScroll();
+                          onInteraction();
+                        },
+                      ),
+                      // Speed label
+                      _SpeedLabel(multiplier: state.playback.tempoMultiplier, colorScheme: cs),
+                      // Faster
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline_rounded),
+                        color: Colors.white38,
+                        iconSize: 22,
+                        tooltip: 'Faster',
+                        onPressed: () {
+                          notifier.fasterScroll();
+                          onInteraction();
+                        },
+                      ),
+                      const SizedBox(width: 16),
+                      // Play / Pause
+                      IconButton(
+                        icon: Icon(state.playback.isAdvancing ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded),
+                        color: cs.primary,
+                        iconSize: 40,
+                        tooltip: state.playback.isAdvancing ? 'Pause' : 'Play',
+                        onPressed: () {
+                          notifier.togglePlayPause();
+                          onInteraction();
+                        },
+                      ),
+                      // Stop
+                      IconButton(
+                        icon: const Icon(Icons.stop_circle_outlined),
+                        color: Colors.white38,
+                        iconSize: 28,
+                        tooltip: 'Stop and reset',
+                        onPressed: () {
+                          notifier.stop();
+                          onInteraction();
+                        },
+                      ),
+                      // Ended indicator (replaces stop when ended)
+                      if (state.playbackStatus == PlaybackStatus.ended)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            'END',
+                            style: TextStyle(color: cs.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2),
+                          ),
+                        ),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left_rounded),
-                    color: const Color(0xDEFFFFFF),
-                    iconSize: 40,
-                    tooltip: 'Previous line',
-                    onPressed: () {
-                      notifier.prevLine();
-                      onInteraction();
-                    },
+                ),
+                // ── Row 2: section/line navigation ───────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous_rounded),
+                        color: Colors.white54,
+                        iconSize: 28,
+                        tooltip: 'Previous section',
+                        onPressed: () {
+                          notifier.prevSection();
+                          onInteraction();
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left_rounded),
+                        color: const Color(0xDEFFFFFF),
+                        iconSize: 40,
+                        tooltip: 'Previous line',
+                        onPressed: () {
+                          notifier.prevLine();
+                          onInteraction();
+                        },
+                      ),
+                      _RepeatButton(
+                        mode: state.repeatMode,
+                        colorScheme: cs,
+                        onTap: () {
+                          notifier.cycleRepeatMode();
+                          onInteraction();
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right_rounded),
+                        color: const Color(0xDEFFFFFF),
+                        iconSize: 40,
+                        tooltip: 'Next line',
+                        onPressed: () {
+                          notifier.nextLine();
+                          onInteraction();
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next_rounded),
+                        color: Colors.white54,
+                        iconSize: 28,
+                        tooltip: 'Next section',
+                        onPressed: () {
+                          notifier.nextSection();
+                          onInteraction();
+                        },
+                      ),
+                    ],
                   ),
-                  _RepeatButton(
-                    mode: state.repeatMode,
-                    colorScheme: cs,
-                    onTap: () {
-                      notifier.cycleRepeatMode();
-                      onInteraction();
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right_rounded),
-                    color: const Color(0xDEFFFFFF),
-                    iconSize: 40,
-                    tooltip: 'Next line',
-                    onPressed: () {
-                      notifier.nextLine();
-                      onInteraction();
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.skip_next_rounded),
-                    color: Colors.white54,
-                    iconSize: 28,
-                    tooltip: 'Next section',
-                    onPressed: () {
-                      notifier.nextSection();
-                      onInteraction();
-                    },
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -447,6 +517,30 @@ class _RepeatButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Speed label ─────────────────────────────────────────────────────────────
+
+class _SpeedLabel extends StatelessWidget {
+  final double multiplier;
+  final ColorScheme colorScheme;
+
+  const _SpeedLabel({required this.multiplier, required this.colorScheme});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDefault = (multiplier - 1.0).abs() < 0.01;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${multiplier.toStringAsFixed(2)}×',
+          style: TextStyle(color: isDefault ? Colors.white38 : colorScheme.primary, fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        const Text('SPEED', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1.0)),
+      ],
     );
   }
 }

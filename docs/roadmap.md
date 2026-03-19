@@ -7,8 +7,8 @@
 
 ## Current Status
 
-**Active Phase: Phase 3 — Performance Mode MVP** ✅ Complete  
-**Next Phase: Phase 4 — Scroll Engine & Playback State Machine**
+**Active Phase: Phase 4 — Scroll Engine & Playback State Machine** ✅ Complete  
+**Next Phase: Phase 5 — Audio-Assisted Following MVP**
 
 ---
 
@@ -236,16 +236,24 @@ that can drive timed auto-scroll and that audio logic can plug into later.
 
 ### Deliverables
 
-- [ ] `ScrollEngine` abstraction — interface for advancing position
-- [ ] `PlaybackState` — full state machine (idle, playing, paused, uncertain,  
-      repeating, ended)
-- [ ] `ProgressState` — current section/line/chord indices + estimated tempo
-- [ ] BPM-based timed auto-scroll mode
-- [ ] Sensitivity controls — slower/faster auto-scroll
-- [ ] Manual override — always wins over auto-scroll
-- [ ] Recovery behavior — if user manually corrects, don't fight them
-- [ ] Confidence-aware design — engine accepts confidence scores as input
-- [ ] Scroll engine unit tests
+- [x] `ScrollEngine` abstract interface — injectable, testable, driven by time OR audio
+- [x] `PlaybackState` model — full lifecycle enum (idle, playing, paused, uncertain, repeating, ended), confidence score, tempo multiplier
+- [x] `ProgressState` model — current section/line/chord indices + estimated BPM
+- [x] `TimedScrollEngine` (BPM-based) — advance interval = (beatsPerLine / bpm) × 60s / multiplier
+- [x] Sensitivity controls — `fasterScroll` / `slowerScroll` (±0.25× steps, clamped 0.25–4.0×)
+- [x] Manual override — `manualNextLine/PrevLine/JumpTo` cancel running timer and restart from new position; always win over engine
+- [x] Recovery behavior — `manualJumpTo` resets engine to user's corrected position and resumes
+- [x] Confidence-aware design — `updateConfidence(score)` API on `PerformanceNotifier`; accepted by engine via `updatePlaybackState`
+- [x] Extend `PerformanceState` to carry `PlaybackState`; convenience getters `isPlaying`, `playbackStatus`
+- [x] Wire `PerformanceNotifier` to `TimedScrollEngine`; engine disposed via `ref.onDispose`
+- [x] Play / Pause / Stop / Toggle controls in `PerformanceScreen` footer
+- [x] Speed label (±0.25× buttons, current multiplier display) in footer
+- [x] End-of-song detection — status transitions to `ended`, engine pauses
+- [x] Scroll engine unit tests — 14 tests covering advance, retreat, wrap, end-hold, timing, pause, multiplier
+
+### Dependencies Added
+
+None (pure Dart; `dart:async` `Timer` only).
 
 ### Out of Scope (Phase 4)
 
@@ -255,10 +263,10 @@ that can drive timed auto-scroll and that audio logic can plug into later.
 
 ### Exit Criteria
 
-- Timed auto-scroll works at BPM-derived pace
-- State machine transitions are correct and tested
-- Audio layer can inject confidence scores without restructuring
-- `flutter analyze` and unit tests pass
+- [x] Timed auto-scroll works at BPM-derived pace
+- [x] State machine transitions are correct and tested
+- [x] Audio layer can inject confidence scores without restructuring (`updateConfidence`)
+- [x] `flutter analyze` and unit tests pass (14/14)
 
 ### Risk Notes
 
