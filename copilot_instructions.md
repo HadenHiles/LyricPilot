@@ -310,12 +310,21 @@ A phase is complete when:
 
 See `docs/roadmap.md` for the authoritative phase tracking.
 
-> Last updated: Phase 4 + karaoke UX polish complete. Phase 5 (Audio-Assisted Following) is next.
+> Last updated: Phase 4 + karaoke UX polish + audio scaffolding complete. Phase 5 (Audio-Assisted Following) is next.
 >
-> **Performance view details (Phases 3–4):**
+> **Performance view details (Phases 3–4 + polish):**
 > - Karaoke-style `ListView` with smooth scroll; active line at 25 % from top.
-> - Graduated opacity + font scale across context lines.
-> - Active line: primary accent bar + translucent pill background.
+> - `TweenAnimationBuilder<double>` per item — font size animates (not jumps) when active index changes ("snap into focus").
+> - `AnimatedOpacity` + `AnimatedContainer` for overall brightness, pill bg, and accent bar — all 380 ms `easeInOutCubic`.
+> - Welcome overlay on first entry: gradient card + hint text, fades out (600 ms) on first interaction.
+> - Initial controls stay visible 10 s (not 4 s) on first entry.
 > - `ChordLyricLine` accepts `activeChordIndex` — highlights active chord with a pill.
 > - `chordIndex` on `PerformanceState`; all nav resets it to 0 on line change.
 > - `TimedScrollEngine` drives BPM-based auto-scroll; `updateConfidence()` entry point ready for Phase 5.
+>
+> **Audio scaffolding (Phase 5 prep — already in repo):**
+> - `domain/audio_activity_state.dart` — `AudioActivityState` enum (unavailable, silent, uncertain, active).
+> - `domain/audio_analyzer.dart` — `AudioAnalyzer` abstract interface + `AudioActivityCallback` typedef.
+> - `data/null_audio_analyzer.dart` — `NullAudioAnalyzer` no-op stub (no mic access).
+> - `presentation/providers/audio_analyzer_provider.dart` — `audioAnalyzerProvider` (returns `NullAudioAnalyzer`). Swap to `MicAudioAnalyzer` in Phase 5.
+> - Integration point: `PerformanceNotifier.updateConfidence(double score)` already calls `_engine?.updatePlaybackState(next)`. Phase 5 just needs to start the analyzer in `play()` and call `updateConfidence` from the activity callback.

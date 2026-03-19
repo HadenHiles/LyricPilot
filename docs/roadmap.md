@@ -8,7 +8,8 @@
 ## Current Status
 
 **Active Phase: Phase 4 — Scroll Engine & Playback State Machine** ✅ Complete  
-**Performance View: Karaoke UX polish** ✅ Complete  
+**Performance View: Karaoke UX + smooth animation + welcome overlay** ✅ Complete  
+**Audio Scaffolding: AudioAnalyzer interface + NullAudioAnalyzer stub** ✅ Complete  
 **Next Phase: Phase 5 — Audio-Assisted Following MVP**
 
 ---
@@ -212,6 +213,11 @@ repeat tools.
 - [x] `AnimatedOpacity` (280 ms, `easeInOut`) smooth fade as active line advances
 - [x] `ChordLyricLine` `activeChordIndex` parameter — active chord gets a pill highlight
 - [x] `chordIndex` field on `PerformanceState`; all nav methods reset/propagate it
+- [x] Smooth animation: `TweenAnimationBuilder<double>` per line item — active line "snaps into focus" by animating font size, not jumping
+- [x] All animated properties (opacity, scale, pill, accent bar) share 380 ms `easeInOutCubic` timing so they move together
+- [x] Scroll to active line now uses 520 ms `easeInOutQuart` for a more polished feel
+- [x] Welcome overlay on first entry: gradient card explaining controls (fades out 600 ms on first interaction)
+- [x] Initial controls auto-hide extended to 10 s (vs. 4 s) on first entry; resets to 4 s after interaction
 
 ### Dependencies Added
 
@@ -294,11 +300,13 @@ auto-scroll confidence. No chord recognition. Layer 1 and Layer 2 audio only.
 ### Deliverables
 
 - [ ] Microphone permission handling (iOS + Android)
-- [ ] `AudioAnalyzer` interface — injectable, testable abstraction
+- [ ] `AudioAnalyzer` interface — injectable, testable abstraction (**scaffolded** in `domain/audio_analyzer.dart`)
+- [ ] `AudioActivityState` enum: `unavailable`, `silent`, `uncertain`, `active` (**scaffolded** in `domain/audio_activity_state.dart`)
+- [ ] `NullAudioAnalyzer` no-op stub (**scaffolded** in `data/null_audio_analyzer.dart`)
+- [ ] `audioAnalyzerProvider` (Provider<AudioAnalyzer>) (**stubbed** in `presentation/providers/audio_analyzer_provider.dart`)
 - [ ] Layer 1: Silence vs. activity detection (RMS energy threshold)
 - [ ] Layer 2: Onset/strum detection (energy burst detection)
-- [ ] `AudioActivityState` — active, silent, uncertain
-- [ ] Feed audio signals into `PlaybackState` as confidence adjustments
+- [ ] Feed audio signals into `PlaybackState` via `PerformanceNotifier.updateConfidence()` (entry point already wired)
 - [ ] Adaptive behavior: hold position when silent, advance when active
 - [ ] Sensitivity settings — how responsive to audio cues
 - [ ] Mute/disable audio following option

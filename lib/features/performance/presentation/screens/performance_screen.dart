@@ -32,6 +32,9 @@ class PerformanceScreen extends ConsumerStatefulWidget {
 
 class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
   Timer? _hideTimer;
+  // True until the player first interacts — shows the welcome overlay and
+  // keeps controls visible for 10 s on entry instead of 4 s.
+  bool _showWelcome = true;
 
   @override
   void initState() {
@@ -49,18 +52,24 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
     super.dispose();
   }
 
-  /// Restart the 4-second auto-hide countdown.
+  /// Restart the auto-hide countdown: 10 s on first entry, 4 s thereafter.
   void _scheduleHide() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 4), () {
+    _hideTimer = Timer(Duration(seconds: _showWelcome ? 10 : 4), () {
       if (mounted) {
         ref.read(performanceNotifierProvider(widget.songId).notifier).hideControls();
       }
     });
   }
 
+  /// Dismiss the welcome overlay and switch to the shorter 4-second timer.
+  void _onFirstInteraction() {
+    if (_showWelcome) setState(() => _showWelcome = false);
+  }
+
   /// Tap on the content area: toggle controls visibility.
   void _onContentTap() {
+    _onFirstInteraction();
     final notifier = ref.read(performanceNotifierProvider(widget.songId).notifier);
     final visible = ref.read(performanceNotifierProvider(widget.songId)).controlsVisible;
     if (visible) {
@@ -74,6 +83,7 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
 
   /// Called by any control button interaction — surfaces controls + resets timer.
   void _onControlInteraction() {
+    _onFirstInteraction();
     ref.read(performanceNotifierProvider(widget.songId).notifier).showControls();
     _scheduleHide();
   }
@@ -122,6 +132,16 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
               opacity: perfState.controlsVisible ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
               child: _ControlsLayer(song: song, state: perfState, notifier: notifier, onInteraction: _onControlInteraction, onClose: () => Navigator.of(context).pop(), onSettings: _openSettings),
+            ),
+          ),
+
+          // ── Welcome overlay — fades out after first interaction ─────────────
+          IgnorePointer(
+            ignoring: !_showWelcome,
+            child: AnimatedOpacity(
+              opacity: _showWelcome ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 600),
+              child: _WelcomeOverlay(song: song),
             ),
           ),
         ],
@@ -232,19 +252,17 @@ class _LinesViewState extends State<_LinesView> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive(snap: true));
   }
 
   @override
   void didUpdateWidget(_LinesView old) {
     super.didUpdateWidget(old);
-    // When the section changes the lines list is a different object; clear the
-    // key map so widgets are freshly keyed for the new section.
     if (!identical(old.lines, widget.lines)) {
       _lineKeys.clear();
     }
-    if (old.activeIndex != widget.activeIndex || !identical(old.lines, widget.lines)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive());
+    if (!identical(old.lines, widget.lines) || old.activeIndex != widget.activeIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive(snap: !identical(old.lines, widget.lines)));
     }
   }
 
@@ -254,31 +272,32 @@ class _LinesViewState extends State<_LinesView> {
     super.dispose();
   }
 
-  void _scrollToActive() {
+  void _scrollToActive({bool snap = false}) {
     if (!mounted) return;
     final ctx = _keyFor(widget.activeIndex).currentContext;
     if (ctx == null) return;
-    Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 450), curve: Curves.easeInOutCubic, alignment: 0.25);
+    Scrollable.ensureVisible(ctx, duration: snap ? Duration.zero : const Duration(milliseconds: 520), curve: Curves.easeInOutQuart, alignment: 0.25);
   }
 
   // Opacity ramp: 0 = active, +N = upcoming, -N = past.
-  double _opacityFor(int rel) => switch (rel) {
+  double _targetOpacity(int rel) => switch (rel) {
     0 => 1.00,
-    1 => 0.72,
-    2 => 0.48,
-    3 => 0.30,
-    >= 4 => 0.16,
-    -1 => 0.34,
-    -2 => 0.18,
+    1 => 0.68,
+    2 => 0.42,
+    3 => 0.24,
+    >= 4 => 0.14,
+    -1 => 0.38,
+    -2 => 0.20,
     _ => 0.10,
   };
 
-  double _fontScaleFor(int rel) => switch (rel) {
+  // Font-scale ramp — active line is largest, shrinks progressively away.
+  double _targetScale(int rel) => switch (rel) {
     0 => 1.00,
-    1 => 0.88,
-    2 => 0.80,
-    >= 3 => 0.73,
-    -1 => 0.78,
+    1 => 0.86,
+    2 => 0.78,
+    >= 3 => 0.72,
+    -1 => 0.80,
     _ => 0.70,
   };
 
@@ -291,63 +310,83 @@ class _LinesViewState extends State<_LinesView> {
     }
 
     final cs = Theme.of(context).colorScheme;
+    // Shared animation config — all animated properties use the same timing
+    // so every visual change (size, opacity, pill, accent bar) moves together.
+    const dur = Duration(milliseconds: 380);
+    const crv = Curves.easeInOutCubic;
 
     return ListView.builder(
       controller: _scrollController,
-      // Bottom padding lets the last line scroll up to the 25 % anchor.
-      padding: const EdgeInsets.only(bottom: 160),
+      padding: const EdgeInsets.only(bottom: 200),
       itemCount: widget.lines.length,
       itemBuilder: (context, index) {
         final rel = index - widget.activeIndex;
         final isActive = rel == 0;
-        final opacity = _opacityFor(rel);
-        final scale = _fontScaleFor(rel);
-
-        // The immediately-next line keeps a higher chord tint — the player can
-        // see "this chord is coming up" without it competing with the active line.
-        final chordAlpha = isActive ? 1.0 : (rel == 1 ? 0.75 : opacity * 0.90);
-        final chordColor = cs.primary.withValues(alpha: chordAlpha);
-        final lyricColor = Colors.white.withValues(alpha: isActive ? 1.0 : opacity);
-
-        final chordStyle = TextStyle(color: chordColor, fontSize: widget.fontSize * 0.60 * scale, fontWeight: FontWeight.w700, letterSpacing: 0.5, height: 1.1);
-        final lyricStyle = TextStyle(color: lyricColor, fontSize: widget.fontSize * scale, height: widget.lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400);
-
-        final lineWidget = ChordLyricLine(line: widget.lines[index], lyricStyle: lyricStyle, chordStyle: chordStyle, displayMode: ChordDisplayMode.stacked, activeChordIndex: isActive ? widget.activeChordIndex : -1);
-
-        // Active line: left accent bar + translucent background pill.
-        // Inactive lines: matching left indent so text columns align.
-        final Widget item;
-        if (isActive) {
-          item = Container(
-            padding: const EdgeInsets.fromLTRB(0, 10, 16, 10),
-            decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.09), borderRadius: BorderRadius.circular(10)),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 3,
-                  margin: const EdgeInsets.only(right: 14),
-                  decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(2)),
-                ),
-                Expanded(child: lineWidget),
-              ],
-            ),
-          );
-        } else {
-          item = Padding(
-            // 17 px = 3 px accent bar + 14 px gap → text aligns with active line.
-            padding: const EdgeInsets.fromLTRB(17, 0, 16, 0),
-            child: lineWidget,
-          );
-        }
+        final opacity = _targetOpacity(rel);
+        final targetScale = _targetScale(rel);
+        // Upcoming line (+1) keeps an elevated chord tint so the player can
+        // see the next chord without it competing with the active line.
+        final chordAlpha = isActive ? 1.0 : (rel == 1 ? 0.82 : 0.72);
 
         return KeyedSubtree(
           key: _keyFor(index),
-          child: AnimatedOpacity(
-            opacity: isActive ? 1.0 : opacity,
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeInOut,
-            child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: item),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            // AnimatedOpacity handles overall line brightness transitions.
+            child: AnimatedOpacity(
+              opacity: opacity,
+              duration: dur,
+              curve: crv,
+              // AnimatedContainer transitions the active-line pill and accent bar.
+              child: AnimatedContainer(
+                duration: dur,
+                curve: crv,
+                padding: isActive ? const EdgeInsets.fromLTRB(0, 10, 16, 10) : const EdgeInsets.fromLTRB(17, 3, 16, 3),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: isActive ? 0.09 : 0.0),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Accent bar — animates from 0 width to 3 px when active.
+                    AnimatedContainer(
+                      duration: dur,
+                      curve: crv,
+                      width: isActive ? 3.0 : 0.0,
+                      margin: EdgeInsets.only(right: isActive ? 14.0 : 0.0),
+                      decoration: BoxDecoration(
+                        color: cs.primary.withValues(alpha: isActive ? 1.0 : 0.0),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    // TweenAnimationBuilder drives the font-size change smoothly
+                    // so the active line "snaps into focus" by growing larger
+                    // rather than jumping to a new size instantly.
+                    Expanded(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween<double>(end: targetScale),
+                        duration: dur,
+                        curve: crv,
+                        builder: (ctx, scale, _) => ChordLyricLine(
+                          line: widget.lines[index],
+                          lyricStyle: TextStyle(color: Colors.white, fontSize: widget.fontSize * scale, height: widget.lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400),
+                          chordStyle: TextStyle(
+                            color: cs.primary.withValues(alpha: chordAlpha),
+                            fontSize: widget.fontSize * 0.60 * scale,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            height: 1.1,
+                          ),
+                          displayMode: ChordDisplayMode.stacked,
+                          activeChordIndex: isActive ? widget.activeChordIndex : -1,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         );
       },
@@ -633,6 +672,66 @@ class _SpeedLabel extends StatelessWidget {
         ),
         const Text('SPEED', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1.0)),
       ],
+    );
+  }
+}
+
+// ─── Welcome overlay ─────────────────────────────────────────────────────────
+
+/// Bottom-anchored gradient overlay shown when the player first enters
+/// performance mode. Explains the controls and fades out on first interaction.
+class _WelcomeOverlay extends StatelessWidget {
+  final Song song;
+
+  const _WelcomeOverlay({required this.song});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, stops: [0.0, 0.45, 1.0], colors: [Colors.transparent, Color(0x99000000), Color(0xDD000000)]),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    song.title,
+                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (song.artist.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      song.artist,
+                      style: const TextStyle(color: Colors.white54, fontSize: 15),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.touch_app_rounded, color: cs.primary, size: 16),
+                      const SizedBox(width: 8),
+                      const Text('Tap ▶ to auto-scroll  ·  tap lyrics to navigate', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 110),
+          ],
+        ),
+      ),
     );
   }
 }
