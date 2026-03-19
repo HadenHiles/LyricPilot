@@ -17,13 +17,16 @@ enum RepeatMode {
 /// All navigation and display preference are captured here so the view
 /// is a pure function of this value — no local widget state for position.
 class PerformanceState {
-  const PerformanceState({this.sectionIndex = 0, this.lineIndex = 0, this.repeatMode = RepeatMode.none, this.fontSize = 28.0, this.lineSpacing = 1.6, this.controlsVisible = true, this.playback = const PlaybackState()});
+  const PerformanceState({this.sectionIndex = 0, this.lineIndex = 0, this.chordIndex = 0, this.repeatMode = RepeatMode.none, this.fontSize = 28.0, this.lineSpacing = 1.6, this.controlsVisible = true, this.playback = const PlaybackState()});
 
   /// Index of the currently active section in [Song.sections].
   final int sectionIndex;
 
   /// Index of the currently active line within the current section.
   final int lineIndex;
+
+  /// Index of the currently active chord within the current line (0 = first).
+  final int chordIndex;
 
   /// Current repeat behaviour.
   final RepeatMode repeatMode;
@@ -54,6 +57,14 @@ class PerformanceState {
 
   // ── copyWith ───────────────────────────────────────────────────────────────
 
-  PerformanceState copyWith({int? sectionIndex, int? lineIndex, RepeatMode? repeatMode, double? fontSize, double? lineSpacing, bool? controlsVisible, PlaybackState? playback}) =>
-      PerformanceState(sectionIndex: sectionIndex ?? this.sectionIndex, lineIndex: lineIndex ?? this.lineIndex, repeatMode: repeatMode ?? this.repeatMode, fontSize: fontSize ?? this.fontSize, lineSpacing: lineSpacing ?? this.lineSpacing, controlsVisible: controlsVisible ?? this.controlsVisible, playback: playback ?? this.playback);
+  PerformanceState copyWith({int? sectionIndex, int? lineIndex, int? chordIndex, RepeatMode? repeatMode, double? fontSize, double? lineSpacing, bool? controlsVisible, PlaybackState? playback}) => PerformanceState(
+    sectionIndex: sectionIndex ?? this.sectionIndex,
+    lineIndex: lineIndex ?? this.lineIndex,
+    chordIndex: chordIndex ?? this.chordIndex,
+    repeatMode: repeatMode ?? this.repeatMode,
+    fontSize: fontSize ?? this.fontSize,
+    lineSpacing: lineSpacing ?? this.lineSpacing,
+    controlsVisible: controlsVisible ?? this.controlsVisible,
+    playback: playback ?? this.playback,
+  );
 }

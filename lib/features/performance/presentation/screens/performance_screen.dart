@@ -146,16 +146,10 @@ class _ContentLayer extends StatelessWidget {
       );
     }
 
-    final colorScheme = Theme.of(context).colorScheme;
     final sectionIdx = state.sectionIndex.clamp(0, song.sections.length - 1);
     final section = song.sections[sectionIdx];
     final lines = section.lines;
     final lineIdx = lines.isEmpty ? 0 : state.lineIndex.clamp(0, lines.length - 1);
-
-    final activeChordStyle = TextStyle(color: colorScheme.primary, fontSize: state.fontSize * 0.60, fontWeight: FontWeight.w700, letterSpacing: 0.5, height: 1.1);
-    final activeLyricStyle = TextStyle(color: Colors.white, fontSize: state.fontSize, height: state.lineSpacing, fontWeight: FontWeight.w500);
-    final dimChordStyle = activeChordStyle.copyWith(color: colorScheme.primary.withValues(alpha: 0.22), fontSize: state.fontSize * 0.50);
-    final dimLyricStyle = activeLyricStyle.copyWith(color: Colors.white.withValues(alpha: 0.22), fontSize: state.fontSize * 0.72, fontWeight: FontWeight.w400);
 
     return SafeArea(
       child: Padding(
@@ -167,7 +161,7 @@ class _ContentLayer extends StatelessWidget {
             _SectionBadge(section: section, sectionIndex: sectionIdx, totalSections: song.sections.length, lineIndex: lineIdx, totalLines: lines.length),
             const SizedBox(height: 20),
             Expanded(
-              child: _LinesView(lines: lines, activeIndex: lineIdx, activeLyricStyle: activeLyricStyle, activeChordStyle: activeChordStyle, dimLyricStyle: dimLyricStyle, dimChordStyle: dimChordStyle),
+              child: _LinesView(lines: lines, activeIndex: lineIdx, activeChordIndex: state.chordIndex, fontSize: state.fontSize, lineSpacing: state.lineSpacing),
             ),
           ],
         ),
@@ -213,53 +207,151 @@ class _SectionBadge extends StatelessWidget {
 
 // ─── Lines view ───────────────────────────────────────────────────────────────
 
-/// Displays up to 4 lines centred vertically: 1 dimmed context line above,
-/// the active line at full brightness, then up to 2 dimmed context lines below.
-class _LinesView extends StatelessWidget {
+/// Karaoke-style lyric display: the active line is anchored at ~25 % from the
+/// top so the player can always read ahead. Lines animate between dim and bright
+/// as [activeIndex] changes, and the list scrolls smoothly to follow.
+class _LinesView extends StatefulWidget {
   final List<SongLine> lines;
   final int activeIndex;
-  final TextStyle activeLyricStyle;
-  final TextStyle activeChordStyle;
-  final TextStyle dimLyricStyle;
-  final TextStyle dimChordStyle;
+  final int activeChordIndex;
+  final double fontSize;
+  final double lineSpacing;
 
-  const _LinesView({required this.lines, required this.activeIndex, required this.activeLyricStyle, required this.activeChordStyle, required this.dimLyricStyle, required this.dimChordStyle});
+  const _LinesView({required this.lines, required this.activeIndex, required this.activeChordIndex, required this.fontSize, required this.lineSpacing});
+
+  @override
+  State<_LinesView> createState() => _LinesViewState();
+}
+
+class _LinesViewState extends State<_LinesView> {
+  final _scrollController = ScrollController();
+  final _lineKeys = <int, GlobalKey>{};
+
+  GlobalKey _keyFor(int index) => _lineKeys.putIfAbsent(index, GlobalKey.new);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive());
+  }
+
+  @override
+  void didUpdateWidget(_LinesView old) {
+    super.didUpdateWidget(old);
+    // When the section changes the lines list is a different object; clear the
+    // key map so widgets are freshly keyed for the new section.
+    if (!identical(old.lines, widget.lines)) {
+      _lineKeys.clear();
+    }
+    if (old.activeIndex != widget.activeIndex || !identical(old.lines, widget.lines)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToActive() {
+    if (!mounted) return;
+    final ctx = _keyFor(widget.activeIndex).currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 450), curve: Curves.easeInOutCubic, alignment: 0.25);
+  }
+
+  // Opacity ramp: 0 = active, +N = upcoming, -N = past.
+  double _opacityFor(int rel) => switch (rel) {
+    0 => 1.00,
+    1 => 0.72,
+    2 => 0.48,
+    3 => 0.30,
+    >= 4 => 0.16,
+    -1 => 0.34,
+    -2 => 0.18,
+    _ => 0.10,
+  };
+
+  double _fontScaleFor(int rel) => switch (rel) {
+    0 => 1.00,
+    1 => 0.88,
+    2 => 0.80,
+    >= 3 => 0.73,
+    -1 => 0.78,
+    _ => 0.70,
+  };
 
   @override
   Widget build(BuildContext context) {
-    if (lines.isEmpty) {
+    if (widget.lines.isEmpty) {
       return const Center(
         child: Text('No lines in this section.', style: TextStyle(color: Colors.white24, fontSize: 16)),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Previous line — context above
-        if (activeIndex > 0) ...[_buildLine(lines[activeIndex - 1], dim: true), const SizedBox(height: 20)],
+    final cs = Theme.of(context).colorScheme;
 
-        // Active line
-        _buildLine(lines[activeIndex], dim: false),
+    return ListView.builder(
+      controller: _scrollController,
+      // Bottom padding lets the last line scroll up to the 25 % anchor.
+      padding: const EdgeInsets.only(bottom: 160),
+      itemCount: widget.lines.length,
+      itemBuilder: (context, index) {
+        final rel = index - widget.activeIndex;
+        final isActive = rel == 0;
+        final opacity = _opacityFor(rel);
+        final scale = _fontScaleFor(rel);
 
-        // Context lines below
-        if (activeIndex + 1 < lines.length) ...[const SizedBox(height: 20), _buildLine(lines[activeIndex + 1], dim: true)],
-        if (activeIndex + 2 < lines.length) ...[
-          const SizedBox(height: 12),
-          _buildLine(
-            lines[activeIndex + 2],
-            dim: true,
-            lyricOverride: dimLyricStyle.copyWith(color: Colors.white.withValues(alpha: 0.10)),
-            chordOverride: dimChordStyle.copyWith(color: Colors.white.withValues(alpha: 0.08)),
+        // The immediately-next line keeps a higher chord tint — the player can
+        // see "this chord is coming up" without it competing with the active line.
+        final chordAlpha = isActive ? 1.0 : (rel == 1 ? 0.75 : opacity * 0.90);
+        final chordColor = cs.primary.withValues(alpha: chordAlpha);
+        final lyricColor = Colors.white.withValues(alpha: isActive ? 1.0 : opacity);
+
+        final chordStyle = TextStyle(color: chordColor, fontSize: widget.fontSize * 0.60 * scale, fontWeight: FontWeight.w700, letterSpacing: 0.5, height: 1.1);
+        final lyricStyle = TextStyle(color: lyricColor, fontSize: widget.fontSize * scale, height: widget.lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400);
+
+        final lineWidget = ChordLyricLine(line: widget.lines[index], lyricStyle: lyricStyle, chordStyle: chordStyle, displayMode: ChordDisplayMode.stacked, activeChordIndex: isActive ? widget.activeChordIndex : -1);
+
+        // Active line: left accent bar + translucent background pill.
+        // Inactive lines: matching left indent so text columns align.
+        final Widget item;
+        if (isActive) {
+          item = Container(
+            padding: const EdgeInsets.fromLTRB(0, 10, 16, 10),
+            decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.09), borderRadius: BorderRadius.circular(10)),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 3,
+                  margin: const EdgeInsets.only(right: 14),
+                  decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(2)),
+                ),
+                Expanded(child: lineWidget),
+              ],
+            ),
+          );
+        } else {
+          item = Padding(
+            // 17 px = 3 px accent bar + 14 px gap → text aligns with active line.
+            padding: const EdgeInsets.fromLTRB(17, 0, 16, 0),
+            child: lineWidget,
+          );
+        }
+
+        return KeyedSubtree(
+          key: _keyFor(index),
+          child: AnimatedOpacity(
+            opacity: isActive ? 1.0 : opacity,
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeInOut,
+            child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: item),
           ),
-        ],
-      ],
+        );
+      },
     );
-  }
-
-  Widget _buildLine(SongLine line, {required bool dim, TextStyle? lyricOverride, TextStyle? chordOverride}) {
-    return ChordLyricLine(line: line, lyricStyle: lyricOverride ?? (dim ? dimLyricStyle : activeLyricStyle), chordStyle: chordOverride ?? (dim ? dimChordStyle : activeChordStyle), displayMode: ChordDisplayMode.stacked);
   }
 }
 

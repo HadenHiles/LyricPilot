@@ -26,7 +26,11 @@ class ChordLyricLine extends StatelessWidget {
   final bool dimIfEmpty;
   final ChordDisplayMode displayMode;
 
-  const ChordLyricLine({super.key, required this.line, this.lyricStyle, this.chordStyle, this.dimIfEmpty = true, this.displayMode = ChordDisplayMode.inline});
+  /// When non-negative, the chord at this index in the line's sorted chord
+  /// list is highlighted with a translucent pill to show it is currently active.
+  final int activeChordIndex;
+
+  const ChordLyricLine({super.key, required this.line, this.lyricStyle, this.chordStyle, this.dimIfEmpty = true, this.displayMode = ChordDisplayMode.inline, this.activeChordIndex = -1});
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +58,7 @@ class ChordLyricLine extends StatelessWidget {
 
     // Stacked layout: chord row sits above lyric row
     if (displayMode == ChordDisplayMode.stacked) {
-      return _StackedLine(line: line, lyricStyle: effectiveLyricStyle, chordStyle: effectiveChordStyle);
+      return _StackedLine(line: line, lyricStyle: effectiveLyricStyle, chordStyle: effectiveChordStyle, activeChordIndex: activeChordIndex);
     }
 
     // Inline: chord markers woven into the lyric RichText
@@ -87,8 +91,9 @@ class _StackedLine extends StatelessWidget {
   final SongLine line;
   final TextStyle lyricStyle;
   final TextStyle chordStyle;
+  final int activeChordIndex;
 
-  const _StackedLine({required this.line, required this.lyricStyle, required this.chordStyle});
+  const _StackedLine({required this.line, required this.lyricStyle, required this.chordStyle, this.activeChordIndex = -1});
 
   /// Returns the pixel width of [text] up to [position] using [style].
   double _measureOffset(String text, int position, TextStyle style, double maxWidth) {
@@ -119,14 +124,30 @@ class _StackedLine extends StatelessWidget {
               height: chordRowHeight,
               child: Stack(
                 clipBehavior: Clip.none,
-                children: sortedChords.map((chord) {
+                children: List.generate(sortedChords.length, (i) {
+                  final chord = sortedChords[i];
                   final pos = chord.position ?? 0;
                   final left = _measureOffset(lyric, pos, lyricStyle, constraints.maxWidth);
+                  if (i == activeChordIndex) {
+                    // Active chord: translucent pill shows what is being played.
+                    // Translate to compensate for padding so text stays aligned.
+                    return Positioned(
+                      left: left,
+                      child: Transform.translate(
+                        offset: const Offset(-5, -2),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(color: (chordStyle.color ?? Colors.white).withValues(alpha: 0.22), borderRadius: BorderRadius.circular(5)),
+                          child: Text(chord.chord, style: chordStyle),
+                        ),
+                      ),
+                    );
+                  }
                   return Positioned(
                     left: left,
                     child: Text(chord.chord, style: chordStyle),
                   );
-                }).toList(),
+                }),
               ),
             ),
             Text(lyric, style: lyricStyle),

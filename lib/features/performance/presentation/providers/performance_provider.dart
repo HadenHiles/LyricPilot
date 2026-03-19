@@ -56,7 +56,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
       final sIdx = s.sectionIndex.clamp(0, song.sections.length - 1);
       final lineCount = song.sections[sIdx].lines.length;
       final wrappedLine = next.lineIndex >= lineCount ? 0 : next.lineIndex;
-      state = s.copyWith(sectionIndex: sIdx, lineIndex: wrappedLine);
+      state = s.copyWith(sectionIndex: sIdx, lineIndex: wrappedLine, chordIndex: next.chordIndex);
       return;
     }
 
@@ -66,13 +66,14 @@ class PerformanceNotifier extends _$PerformanceNotifier {
       state = s.copyWith(
         sectionIndex: next.sectionIndex,
         lineIndex: next.lineIndex,
+        chordIndex: next.chordIndex,
         playback: s.playback.copyWith(status: PlaybackStatus.ended),
       );
       _engine?.pause();
       return;
     }
 
-    state = s.copyWith(sectionIndex: next.sectionIndex, lineIndex: next.lineIndex);
+    state = s.copyWith(sectionIndex: next.sectionIndex, lineIndex: next.lineIndex, chordIndex: next.chordIndex);
   }
 
   // ── Playback control ───────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
   void stop() {
     _engine?.dispose();
     _engine = null;
-    state = state.copyWith(sectionIndex: 0, lineIndex: 0, playback: state.playback.copyWith(status: PlaybackStatus.idle));
+    state = state.copyWith(sectionIndex: 0, lineIndex: 0, chordIndex: 0, playback: state.playback.copyWith(status: PlaybackStatus.idle));
   }
 
   /// Increase auto-scroll speed by one step.
@@ -154,18 +155,18 @@ class PerformanceNotifier extends _$PerformanceNotifier {
 
     if (s.repeatMode == RepeatMode.section) {
       final newLine = next >= sectionLines.length ? 0 : next;
-      state = s.copyWith(lineIndex: newLine);
+      state = s.copyWith(lineIndex: newLine, chordIndex: 0);
       _engine?.manualJumpTo(ProgressState(sectionIndex: sectionIdx, lineIndex: newLine));
       return;
     }
 
     if (next < sectionLines.length) {
-      state = s.copyWith(lineIndex: next);
+      state = s.copyWith(lineIndex: next, chordIndex: 0);
       _engine?.manualJumpTo(ProgressState(sectionIndex: sectionIdx, lineIndex: next));
     } else {
       final nextSection = sectionIdx + 1;
       if (nextSection < song.sections.length) {
-        state = s.copyWith(sectionIndex: nextSection, lineIndex: 0);
+        state = s.copyWith(sectionIndex: nextSection, lineIndex: 0, chordIndex: 0);
         _engine?.manualJumpTo(ProgressState(sectionIndex: nextSection, lineIndex: 0));
       }
     }
@@ -185,7 +186,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     } else {
       return;
     }
-    state = s.copyWith(sectionIndex: target.sectionIndex, lineIndex: target.lineIndex);
+    state = s.copyWith(sectionIndex: target.sectionIndex, lineIndex: target.lineIndex, chordIndex: 0);
     _engine?.manualJumpTo(target);
   }
 
@@ -196,7 +197,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     if (song == null || song.sections.isEmpty) return;
     final next = state.sectionIndex + 1;
     if (next < song.sections.length) {
-      state = state.copyWith(sectionIndex: next, lineIndex: 0);
+      state = state.copyWith(sectionIndex: next, lineIndex: 0, chordIndex: 0);
       _engine?.manualJumpTo(ProgressState(sectionIndex: next, lineIndex: 0));
     }
   }
@@ -206,7 +207,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     if (song == null || song.sections.isEmpty) return;
     final s = state;
     final target = s.sectionIndex > 0 ? ProgressState(sectionIndex: s.sectionIndex - 1, lineIndex: 0) : ProgressState(sectionIndex: 0, lineIndex: 0);
-    state = s.copyWith(sectionIndex: target.sectionIndex, lineIndex: target.lineIndex);
+    state = s.copyWith(sectionIndex: target.sectionIndex, lineIndex: target.lineIndex, chordIndex: 0);
     _engine?.manualJumpTo(target);
   }
 
