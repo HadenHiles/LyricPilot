@@ -243,20 +243,13 @@ class _LinesView extends StatefulWidget {
   final double fontSize;
   final double lineSpacing;
 
-  const _LinesView({
-    required this.lines,
-    required this.activeIndex,
-    required this.activeChordIndex,
-    required this.fontSize,
-    required this.lineSpacing,
-  });
+  const _LinesView({required this.lines, required this.activeIndex, required this.activeChordIndex, required this.fontSize, required this.lineSpacing});
 
   @override
   State<_LinesView> createState() => _LinesViewState();
 }
 
-class _LinesViewState extends State<_LinesView>
-    with SingleTickerProviderStateMixin {
+class _LinesViewState extends State<_LinesView> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   /// Fractional active-index.  Animates 2.0 → 3.0 as the player moves from
@@ -266,10 +259,7 @@ class _LinesViewState extends State<_LinesView>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 450),
-    );
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
     // Start positioned correctly — no entry animation needed.
     _fi = AlwaysStoppedAnimation(widget.activeIndex.toDouble());
   }
@@ -284,8 +274,7 @@ class _LinesViewState extends State<_LinesView>
     } else if (old.activeIndex != widget.activeIndex) {
       // Line advance / retreat — animate from wherever _fi currently is.
       final from = _fi.value;
-      _fi = Tween<double>(begin: from, end: widget.activeIndex.toDouble())
-          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic));
+      _fi = Tween<double>(begin: from, end: widget.activeIndex.toDouble()).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic));
       _ctrl.forward(from: 0);
     }
   }
@@ -308,121 +297,141 @@ class _LinesViewState extends State<_LinesView>
   }
 
   /// Chord tint: full primary colour near active, dims with distance.
-  double _chordAlpha(double rel) =>
-      rel.abs() < 0.5 ? 1.0 : (_opacity(rel) + 0.1).clamp(0.0, 1.0);
+  double _chordAlpha(double rel) => rel.abs() < 0.5 ? 1.0 : (_opacity(rel) + 0.1).clamp(0.0, 1.0);
 
   @override
   Widget build(BuildContext context) {
     if (widget.lines.isEmpty) {
       return const Center(
-        child: Text(
-          'No lines in this section.',
-          style: TextStyle(color: Colors.white24, fontSize: 16),
-        ),
+        child: Text('No lines in this section.', style: TextStyle(color: Colors.white24, fontSize: 16)),
       );
     }
 
     final cs = Theme.of(context).colorScheme;
 
-    return LayoutBuilder(builder: (context, constraints) {
-      // Uniform slot height keeps spacing consistent.
-      // chord row height  +  lyric row height  +  top/bottom padding.
-      final slotH = widget.fontSize * 0.60 * 1.15    // chord row
-                  + widget.fontSize * widget.lineSpacing // lyric row
-                  + 26.0;                               // padding
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Horizontal space available inside each line's Container
+        // (17 left + 16 right padding = 33 total).
+        final contentWidth = (constraints.maxWidth - 33.0).clamp(1.0, double.infinity);
 
-      // Active line anchored at 22 % from top — plenty of read-ahead below.
-      final anchorY = constraints.maxHeight * 0.22;
+        // Measure chord-row height the same way _StackedLine does so that
+        // the slot dimension matches the actual rendered chord row exactly.
+        final chordPainter = TextPainter(
+          text: TextSpan(
+            text: 'Cm7',
+            style: TextStyle(fontSize: widget.fontSize * 0.60, fontWeight: FontWeight.w700, height: 1.1),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final chordRowH = chordPainter.height + 4.0;
 
-      return ClipRect(
-        child: AnimatedBuilder(
-          animation: _fi,
-          builder: (context, _) {
-            final fi = _fi.value;
-            final items = <Widget>[];
+        // Measure the tallest lyric row in this section so the slot is wide
+        // enough to accommodate lines that wrap to multiple text rows.
+        double maxLyricH = widget.fontSize * widget.lineSpacing;
+        for (final line in widget.lines) {
+          if (line.isBlank || line.isInstrumental) continue;
+          final lp = TextPainter(
+            text: TextSpan(
+              text: line.lyric,
+              style: TextStyle(fontSize: widget.fontSize, height: widget.lineSpacing),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout(maxWidth: contentWidth);
+          if (lp.height > maxLyricH) maxLyricH = lp.height;
+        }
 
-            for (var i = 0; i < widget.lines.length; i++) {
-              final rel  = i - fi;
-              final yPos = anchorY + rel * slotH;
+        // slotH = chord row + tallest lyric row + container vertical
+        // padding (8+8 = 16) + inter-line gap (10).
+        final slotH = chordRowH + maxLyricH + 26.0;
 
-              // Skip lines that are off-screen (±1 slot margin so lines
-              // animate smoothly into/out-of view from just off the edge).
-              if (yPos < -slotH || yPos > constraints.maxHeight + slotH) {
-                continue;
+        // Active line anchored at 22 % from top — plenty of read-ahead below.
+        final anchorY = constraints.maxHeight * 0.22;
+
+        return ClipRect(
+          child: AnimatedBuilder(
+            animation: _fi,
+            builder: (context, _) {
+              final fi = _fi.value;
+              final items = <Widget>[];
+
+              for (var i = 0; i < widget.lines.length; i++) {
+                final rel = i - fi;
+                final yPos = anchorY + rel * slotH;
+
+                // Skip lines that are off-screen (±1 slot margin so lines
+                // animate smoothly into/out-of view from just off the edge).
+                if (yPos < -slotH || yPos > constraints.maxHeight + slotH) {
+                  continue;
+                }
+
+                final sc = _scale(rel);
+                final op = _opacity(rel);
+                final ca = _chordAlpha(rel);
+                final barA = (1.0 - rel.abs()).clamp(0.0, 1.0);
+                final pillA = barA * 0.09;
+                final isActive = rel.abs() < 0.3;
+
+                items.add(
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: yPos,
+                    child: Opacity(
+                      opacity: op,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Background pill — alpha tracks proximity to active.
+                          // Fixed 17 px left indent on all lines so the text
+                          // column never shifts as the accent bar fades in.
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(17, 8, 16, 8),
+                            decoration: BoxDecoration(
+                              color: cs.primary.withValues(alpha: pillA),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: ChordLyricLine(
+                              line: widget.lines[i],
+                              lyricStyle: TextStyle(color: Colors.white, fontSize: widget.fontSize * sc, height: widget.lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400),
+                              chordStyle: TextStyle(
+                                color: cs.primary.withValues(alpha: ca),
+                                fontSize: widget.fontSize * 0.60 * sc,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.5,
+                                height: 1.1,
+                              ),
+                              displayMode: ChordDisplayMode.stacked,
+                              activeChordIndex: isActive ? widget.activeChordIndex : -1,
+                            ),
+                          ),
+
+                          // Left accent bar — fades in / out with barA.
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 3,
+                              decoration: BoxDecoration(
+                                color: cs.primary.withValues(alpha: barA),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
               }
 
-              final sc       = _scale(rel);
-              final op       = _opacity(rel);
-              final ca       = _chordAlpha(rel);
-              final barA     = (1.0 - rel.abs()).clamp(0.0, 1.0);
-              final pillA    = barA * 0.09;
-              final isActive = rel.abs() < 0.3;
-
-              items.add(Positioned(
-                left: 0,
-                right: 0,
-                top: yPos,
-                child: Opacity(
-                  opacity: op,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      // Background pill — alpha tracks proximity to active.
-                      // Fixed 17 px left indent on all lines so the text
-                      // column never shifts as the accent bar fades in.
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(17, 8, 16, 8),
-                        decoration: BoxDecoration(
-                          color: cs.primary.withValues(alpha: pillA),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: ChordLyricLine(
-                          line: widget.lines[i],
-                          lyricStyle: TextStyle(
-                            color: Colors.white,
-                            fontSize: widget.fontSize * sc,
-                            height: widget.lineSpacing,
-                            fontWeight: isActive
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                          ),
-                          chordStyle: TextStyle(
-                            color: cs.primary.withValues(alpha: ca),
-                            fontSize: widget.fontSize * 0.60 * sc,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                            height: 1.1,
-                          ),
-                          displayMode: ChordDisplayMode.stacked,
-                          activeChordIndex:
-                              isActive ? widget.activeChordIndex : -1,
-                        ),
-                      ),
-
-                      // Left accent bar — fades in / out with barA.
-                      Positioned(
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 3,
-                          decoration: BoxDecoration(
-                            color: cs.primary.withValues(alpha: barA),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ));
-            }
-
-            return Stack(clipBehavior: Clip.hardEdge, children: items);
-          },
-        ),
-      );
-    });
+              return Stack(clipBehavior: Clip.hardEdge, children: items);
+            },
+          ),
+        );
+      },
+    );
   }
 }
 

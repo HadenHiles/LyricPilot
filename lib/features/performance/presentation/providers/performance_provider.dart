@@ -62,7 +62,11 @@ class PerformanceNotifier extends _$PerformanceNotifier {
 
     // Detect end of song.
     final song = _song;
-    if (song != null && next.sectionIndex >= song.sections.length - 1 && next.lineIndex >= (song.sections.last.lines.length - 1).clamp(0, double.infinity.toInt())) {
+    if (song != null &&
+        next.sectionIndex >= song.sections.length - 1 &&
+        next.lineIndex >=
+            (song.sections.last.lines.length - 1)
+                .clamp(0, song.sections.last.lines.length)) {
       state = s.copyWith(
         sectionIndex: next.sectionIndex,
         lineIndex: next.lineIndex,
