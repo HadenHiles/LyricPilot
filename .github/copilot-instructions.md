@@ -31,7 +31,7 @@ Check `docs/roadmap.md` section "Current Status" before starting any work.
 - `domain/` = pure Dart, no Flutter imports.
 - Models are immutable with `copyWith`. Use `const` constructors.
 - Providers live in `presentation/providers/` inside their feature.
-- Local persistence = Isar (Phase 2+). No backend, no cloud.
+- Local persistence = JSON files via `path_provider` (Phase 2+). `SongRepository` abstraction — no hardcoded storage backend.
 - Audio = layered abstraction starting Phase 5. Never fake working audio.
 
 ---
@@ -45,6 +45,18 @@ Check `docs/roadmap.md` section "Current Status" before starting any work.
 5. Do NOT add dependencies without justifying them in `pubspec.yaml` comments.
 6. Do NOT build features from future phases without explicit approval.
 7. Do NOT implement: cloud, auth, ML chord recognition, social features.
+   Exception: ChordMini API is approved for lyrics import (Phase 3+) — see section 13 of `copilot_instructions.md`.
+
+---
+
+## ChordMini API (Approved — Phase 3+)
+
+- Docs: https://www.chordmini.me/docs
+- No auth required (yet). Handle future `401`/`403` gracefully.
+- Use `/api/lrclib-lyrics` and `/api/genius-lyrics` (10 req/min each) for song import.
+- Chord/beat analysis (`/api/recognize-chords`, `/api/detect-beats`) = Phase 6+ only.
+- **Rate limit rules (mandatory):** debounce search 600 ms; enforce 7-second client-side cooldown between lyrics calls; disable button while in-flight; never auto-retry on 429; import one song at a time; warn after 10 imports per session.
+- Base URL lives in `AppConstants.chordMiniBaseUrl`. Never hardcode elsewhere.
 
 ---
 

@@ -209,25 +209,91 @@ For every coding session:
 
 ---
 
-## 13. What NOT to Build Yet
+## 13. ChordMini API — Song Search & Import
+
+**API:** [https://www.chordmini.me/docs](https://www.chordmini.me/docs)  
+**Auth:** None currently required. Prepare graceful handlers for future `401`/`403` responses.  
+**Production host:** The docs only document `localhost:5001` for local dev. For remote access, contact the maintainer. Store the base URL in `AppConstants.chordMiniBaseUrl` so it can be changed in one place — never hardcode it in feature code.
+
+### Relevant Endpoints
+
+| Endpoint | Method | Rate Limit | Purpose |
+|---|---|---|---|
+| `/api/lrclib-lyrics` | POST | 10 / min | Fetch synced lyrics from LRClib by title + artist |
+| `/api/genius-lyrics` | POST | 10 / min | Fetch lyrics from Genius.com by title + artist |
+| `/api/recognize-chords` | POST | 2 / min | ML chord recognition from audio file (Phase 6+) |
+| `/api/detect-beats` | POST | 2 / min | Beat + BPM detection from audio file (Phase 6+) |
+
+The **lyrics endpoints** are the ones relevant to letting users search and import songs — they are the only ones to build in Phase 3. Chord and beat analysis from audio are Phase 6+ only.
+
+### Phase Integration
+
+- **Phase 3 (approved):** Add a "Search & Import" entry point in the song library (separate from manual creation). User types artist + title → lyrics are fetched from LRClib or Genius → a `Song` is scaffolded and opened in the editor for review/adjustment before saving.
+- **Phase 6+ (future, requires approval):** Audio upload to `/api/recognize-chords` for one-time chord chart generation when creating a song. Never use during live performance.
+
+### Architecture Rules for ChordMini
+
+- Create `ChordMiniApiClient` in `lib/features/song_library/data/services/chordmini_api_client.dart`.
+- Expose it as a Riverpod `Provider`. Override in tests with a mock.
+- The base URL comes from `AppConstants.chordMiniBaseUrl` — a compile-time constant, never a user-editable setting.
+- `ChordMiniApiClient` must handle `429`, `401`, `403`, and network errors; surface them as typed exceptions, not raw HTTP codes.
+- Create `lib/core/utils/rate_limiter.dart` — a simple class that tracks per-endpoint timestamps and enforces minimum intervals client-side.
+
+### Rate Limit Compliance — MANDATORY
+
+These rules are non-negotiable. The API is a free shared service and must be treated as a shared resource:
+
+1. **Debounce search input** — wait at least **600 ms** after the user stops typing before sending a lyrics request. Do not fire on every keystroke.
+2. **Client-side cooldown** — after any successful or failed API call, enforce a minimum gap before the same endpoint can be called again:
+   - Lyrics endpoints: minimum **7 seconds** between calls (≈8/min head-room under the 10/min limit).
+   - Chord/beat endpoints (Phase 6+): minimum **32 seconds** between calls.
+3. **Disable the import button** while a request is in-flight (show a loading indicator). Re-enable only after the cooldown has elapsed.
+4. **Respect `429` responses** — do NOT retry automatically. Show the user a clear message: `"Too many requests — please wait a moment and try again."` Never silently retry or loop.
+5. **No batch importing** — the import UI must import one song at a time. Do not provide a "bulk import" or automated loop that fires multiple requests in quick succession.
+6. **Session throttle** — if a user imports more than **10 songs** in a single session (app lifecycle), warn them with a snackbar before each additional import. Do not hard-block, but make the cost of rapid importing visible.
+7. **Graceful degradation** — if the API is unreachable (network error, 5xx), fall back silently to the manual song editor with a toast: `"Couldn't fetch lyrics — you can add them manually."`
+
+### Import UX Flow
+
+```
+Library → "Import from web" button (separate from "Add Song" manual)
+  → SearchImportScreen: artist + title text fields
+  → Debounced fetch to /api/lrclib-lyrics (primary) or /api/genius-lyrics (fallback)
+  → Preview screen: shows fetched lyrics, auto-parsed into sections
+  → User taps "Save to Library" → opens SongEditorScreen pre-filled
+  → User reviews/adjusts chords and sections → saves
+```
+
+The fetch ≠ the save. The user must always review the result before it enters the library.
+
+### What NOT to Build with ChordMini
+
+- Do NOT call the API in the background without the user triggering it.
+- Do NOT cache API responses indefinitely — lyrics may be corrected upstream. A session-level memory cache (cleared on app restart) is acceptable.
+- Do NOT use chord recognition during live performance mode.
+- Do NOT expose the raw `chordMiniBaseUrl` to users in Settings.
+
+---
+
+## 14. What NOT to Build Yet
 
 Until explicitly approved, do NOT implement:
 
-- Cloud backend or API integration
+- Cloud backend or API integration (ChordMini is approved; all others are not)
 - User accounts or authentication
 - Social features (sharing, reviews, collaboration)
-- Advanced ML-based chord recognition
+- Advanced ML-based chord recognition beyond ChordMini Phase 6+ plan
 - Complex DSP signal processing
 - Universal chord recognition for unknown songs
 - Noisy band environment support
 - Web or desktop platform support
 - Fret/fingering detection
 - MIDI integration
-- Import from external services (Spotify, Ultimate Guitar, etc.)
+- Import from external services other than ChordMini (Spotify, Ultimate Guitar, etc.)
 
 ---
 
-## 14. Definition of Done Per Phase
+## 15. Definition of Done Per Phase
 
 A phase is complete when:
 
@@ -240,7 +306,7 @@ A phase is complete when:
 
 ---
 
-## 15. Current Phase Status
+## 16. Current Phase Status
 
 See `docs/roadmap.md` for the authoritative phase tracking.
 
