@@ -201,8 +201,6 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? 'Edit Song' : 'New Song'),
@@ -219,35 +217,25 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 120),
+          padding: EdgeInsets.zero,
           children: [
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _MetadataCard(titleCtrl: _titleCtrl, artistCtrl: _artistCtrl, keyCtrl: _keyCtrl, bpmCtrl: _bpmCtrl, notesCtrl: _notesCtrl),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            ...List.generate(_sections.length, (i) => _SectionEditor(key: ValueKey(_sections[i].id), section: _sections[i], onRemove: () => _removeSection(i))),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Text('Sections', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  TextButton.icon(onPressed: _addSection, icon: const Icon(Icons.add, size: 18), label: const Text('Add Section')),
-                ],
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: OutlinedButton.icon(
+                onPressed: _addSection,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add Section'),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 44)),
               ),
             ),
-            if (_sections.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-                child: Center(
-                  child: Text(
-                    'No sections yet.\nTap "Add Section" to start building your song.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ),
-              ),
-            ...List.generate(_sections.length, (i) => _SectionEditor(key: ValueKey(_sections[i].id), section: _sections[i], onRemove: () => _removeSection(i))),
+            const SizedBox(height: 80),
           ],
         ),
       ),
@@ -347,6 +335,7 @@ class _SectionEditor extends StatefulWidget {
 
 class _SectionEditorState extends State<_SectionEditor> {
   int _lineSeq = 0;
+  bool _typePickerExpanded = false;
 
   String _newLineId() => 'line_${DateTime.now().microsecondsSinceEpoch}_${_lineSeq++}';
 
@@ -397,28 +386,36 @@ class _SectionEditorState extends State<_SectionEditor> {
     final section = widget.section;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-      decoration: BoxDecoration(
-        color: _sectionTint(section.type, cs),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
-      ),
+      color: _sectionTint(section.type, cs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Section header ──────────────────────────────
+          // Hairline separates adjacent sections
+          Container(height: 1, color: cs.outlineVariant.withValues(alpha: 0.2)),
+
+          // ── Section header strip ──────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 6, 4),
+            padding: const EdgeInsets.fromLTRB(16, 8, 6, 4),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Type badge label
-                Text(
-                  section.type.displayName.toUpperCase(),
-                  style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.55), letterSpacing: 1.4, fontWeight: FontWeight.w700),
+                // Tappable type label — expands type picker
+                GestureDetector(
+                  onTap: () => setState(() => _typePickerExpanded = !_typePickerExpanded),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        section.type.displayName.toUpperCase(),
+                        style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6), letterSpacing: 1.4, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(_typePickerExpanded ? Icons.expand_less : Icons.expand_more, size: 13, color: cs.onSurfaceVariant.withValues(alpha: 0.45)),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 8),
-                // Editable section name (custom label, e.g. "Verse 1")
+                // Editable name (e.g. "Verse 1")
                 Expanded(
                   child: TextField(
                     controller: section.nameCtrl,
@@ -432,32 +429,37 @@ class _SectionEditorState extends State<_SectionEditor> {
                     ),
                   ),
                 ),
-                // Remove section
-                IconButton(icon: const Icon(Icons.delete_outline, size: 18), color: cs.error.withValues(alpha: 0.65), padding: const EdgeInsets.all(8), tooltip: 'Remove section', onPressed: widget.onRemove),
+                IconButton(icon: const Icon(Icons.delete_outline, size: 18), color: cs.error.withValues(alpha: 0.55), padding: const EdgeInsets.all(8), tooltip: 'Remove section', onPressed: widget.onRemove),
               ],
             ),
           ),
 
-          // Type chips (compact, de-emphasised)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-            child: _SectionTypePicker(value: section.type, onChanged: (t) => setState(() => section.type = t)),
-          ),
+          // Collapsible type picker
+          if (_typePickerExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: _SectionTypePicker(
+                value: section.type,
+                onChanged: (t) => setState(() {
+                  section.type = t;
+                  _typePickerExpanded = false;
+                }),
+              ),
+            ),
 
-          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.3)),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
 
-          // ── Lines ────────────────────────────────────────
+          // ── Lines ──────────────────────────────────────
           ...section.lines.asMap().entries.map((e) => _LyricsFirstLineWidget(key: ValueKey(e.value.id), line: e.value, onRemove: () => _removeLine(e.key), onAddLineBelow: () => _addLineAfter(e.key))),
 
           // Add-line button
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: TextButton.icon(
               onPressed: _addLineAtEnd,
               icon: const Icon(Icons.add, size: 15),
               label: const Text('Add Line'),
-              style: TextButton.styleFrom(foregroundColor: cs.onSurfaceVariant.withValues(alpha: 0.65), textStyle: const TextStyle(fontSize: 13), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              style: TextButton.styleFrom(foregroundColor: cs.onSurfaceVariant.withValues(alpha: 0.55), textStyle: const TextStyle(fontSize: 13), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
             ),
           ),
         ],
@@ -619,7 +621,7 @@ class _LyricsFirstLineWidgetState extends State<_LyricsFirstLineWidget> {
         onSubmitted: _onSubmitted,
         textInputAction: TextInputAction.next,
         textCapitalization: TextCapitalization.sentences,
-        style: theme.textTheme.bodyMedium,
+        style: theme.textTheme.bodyLarge,
         decoration: InputDecoration(
           hintText: 'Type lyrics…',
           hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
@@ -638,7 +640,7 @@ class _LyricsFirstLineWidgetState extends State<_LyricsFirstLineWidget> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(
           'Tap to add lyrics…',
-          style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.35), fontStyle: FontStyle.italic),
+          style: theme.textTheme.bodyLarge?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.35), fontStyle: FontStyle.italic),
         ),
       );
     }
@@ -699,7 +701,7 @@ class _WordChordSlot extends StatelessWidget {
             ),
           ),
           // Word text
-          Text(word, style: theme.textTheme.bodyMedium),
+          Text(word, style: theme.textTheme.bodyLarge),
         ],
       ),
     );

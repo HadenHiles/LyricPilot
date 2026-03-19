@@ -54,7 +54,7 @@ class LyricsFirstLineView extends StatelessWidget {
     if (line.isInstrumental) {
       return Text(
         line.chords.map((c) => c.chord).join('   '),
-        style: theme.textTheme.bodyMedium?.copyWith(color: cs.primary, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+        style: theme.textTheme.bodyLarge?.copyWith(color: cs.primary, fontWeight: FontWeight.w700, letterSpacing: 0.3),
       );
     }
 
@@ -70,39 +70,31 @@ class LyricsFirstLineView extends StatelessWidget {
         final chord = chordMap[e.key];
         final hasChord = chord != null && chord.isNotEmpty;
 
-        if (!hasChord) {
-          // No chord on this word — render with a transparent placeholder box
-          // so the baseline stays aligned with chorded words on the same run.
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Invisible spacer matching the height of a chord box
-              const SizedBox(height: 21),
-              Text(e.value.word, style: theme.textTheme.bodyMedium),
-            ],
-          );
-        }
-
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              constraints: const BoxConstraints(minWidth: 30),
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              margin: const EdgeInsets.only(bottom: 3),
-              decoration: BoxDecoration(
-                color: cs.primaryContainer.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: cs.primary.withValues(alpha: 0.5), width: 0.8),
-              ),
-              child: Text(
-                chord,
-                style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.primary, letterSpacing: 0.2, fontSize: 11),
+            // Always render the chord box — invisible when no chord assigned.
+            // Identical widget structure guarantees pixel-perfect height matching
+            // so the lyric baseline is level across all words in every run.
+            Opacity(
+              opacity: hasChord ? 1.0 : 0.0,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 30),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                margin: const EdgeInsets.only(bottom: 3),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: cs.primary.withValues(alpha: 0.5), width: 0.8),
+                ),
+                child: Text(
+                  hasChord ? chord : 'A',
+                  style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.primary, letterSpacing: 0.2, fontSize: 11),
+                ),
               ),
             ),
-            Text(e.value.word, style: theme.textTheme.bodyMedium),
+            Text(e.value.word, style: theme.textTheme.bodyLarge),
           ],
         );
       }).toList(),

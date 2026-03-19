@@ -181,32 +181,32 @@ class _SectionCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-      decoration: BoxDecoration(
-        color: _sectionTint(section.type, colorScheme),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.35)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Subtle section label
-            Text(
-              section.name.toUpperCase(),
-              style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.55), letterSpacing: 1.4, fontWeight: FontWeight.w700),
+      color: _sectionTint(section.type, colorScheme),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Hairline between sections
+          Container(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.18)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  section.name.toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.45), letterSpacing: 1.4, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                ...section.lines.map(
+                  (line) => Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: LyricsFirstLineView(line: line),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            // Lines
-            ...section.lines.map(
-              (line) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: LyricsFirstLineView(line: line),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
