@@ -135,9 +135,10 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
             ),
           ),
 
-          // ── Welcome overlay — fades out after first interaction ─────────────
+          // ── Welcome overlay — purely visual; always pointer-transparent so
+          //    taps fall through to the GestureDetector beneath, which calls
+          //    _onFirstInteraction and dismisses it.
           IgnorePointer(
-            ignoring: !_showWelcome,
             child: AnimatedOpacity(
               opacity: _showWelcome ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 600),
