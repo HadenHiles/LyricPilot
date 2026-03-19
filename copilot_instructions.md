@@ -310,4 +310,12 @@ A phase is complete when:
 
 See `docs/roadmap.md` for the authoritative phase tracking.
 
-> Last updated: Phase 2 — Song CRUD & Local Persistence complete.
+> Last updated: Phase 4 + karaoke UX polish complete. Phase 5 (Audio-Assisted Following) is next.
+>
+> **Performance view details (Phases 3–4):**
+> - Karaoke-style `ListView` with smooth scroll; active line at 25 % from top.
+> - Graduated opacity + font scale across context lines.
+> - Active line: primary accent bar + translucent pill background.
+> - `ChordLyricLine` accepts `activeChordIndex` — highlights active chord with a pill.
+> - `chordIndex` on `PerformanceState`; all nav resets it to 0 on line change.
+> - `TimedScrollEngine` drives BPM-based auto-scroll; `updateConfidence()` entry point ready for Phase 5.

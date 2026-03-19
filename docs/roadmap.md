@@ -8,6 +8,7 @@
 ## Current Status
 
 **Active Phase: Phase 4 — Scroll Engine & Playback State Machine** ✅ Complete  
+**Performance View: Karaoke UX polish** ✅ Complete  
 **Next Phase: Phase 5 — Audio-Assisted Following MVP**
 
 ---
@@ -202,6 +203,15 @@ repeat tools.
 - [x] `PerformanceNotifier` — Riverpod `@riverpod` family notifier (keyed by songId)
 - [x] Context lines — 1 dimmed line above + 2 dimmed lines below current line
 - [x] Immersive full-screen mode (`SystemUiMode.immersiveSticky`); restored on exit
+- [x] Karaoke-style scrolling — `_LinesView` replaced with smooth-scrolling `ListView`
+- [x] Active line anchored at ~25 % from top; player can always read ahead
+- [x] Graduated opacity + font scale across context lines (active 100 % → far history 10 %)
+- [x] Upcoming line (+1) keeps elevated chord tint — "this chord is coming up"
+- [x] Active line: left primary-colour accent bar + translucent background pill
+- [x] All inactive lines carry matching indent so text columns stay aligned
+- [x] `AnimatedOpacity` (280 ms, `easeInOut`) smooth fade as active line advances
+- [x] `ChordLyricLine` `activeChordIndex` parameter — active chord gets a pill highlight
+- [x] `chordIndex` field on `PerformanceState`; all nav methods reset/propagate it
 
 ### Dependencies Added
 
