@@ -6,7 +6,7 @@ import '../../domain/models/section_type.dart';
 import '../../domain/models/song.dart';
 import '../../domain/models/song_section.dart';
 import '../providers/song_library_provider.dart';
-import '../widgets/chord_lyric_line.dart';
+import '../widgets/lyrics_first_line_view.dart';
 
 /// Shows a song's full content — metadata, sections, and chord/lyric lines.
 ///
@@ -180,52 +180,54 @@ class _SectionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Section header
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: _sectionColor(section.type, colorScheme), borderRadius: BorderRadius.circular(6)),
-                  child: Text(
-                    section.name,
-                    style: theme.textTheme.labelMedium?.copyWith(color: colorScheme.onPrimary, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      decoration: BoxDecoration(
+        color: _sectionTint(section.type, colorScheme),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Subtle section label
+            Text(
+              section.name.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.55), letterSpacing: 1.4, fontWeight: FontWeight.w700),
             ),
-          ),
-          // Lines
-          ...section.lines.map(
-            (line) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: ChordLyricLine(line: line),
+            const SizedBox(height: 8),
+            // Lines
+            ...section.lines.map(
+              (line) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: LyricsFirstLineView(line: line),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Color _sectionColor(SectionType type, ColorScheme colorScheme) {
+  Color _sectionTint(SectionType type, ColorScheme cs) {
     switch (type) {
       case SectionType.chorus:
-        return colorScheme.primary;
+        return cs.primaryContainer.withValues(alpha: 0.28);
       case SectionType.verse:
-        return colorScheme.secondary;
+        return cs.secondaryContainer.withValues(alpha: 0.28);
       case SectionType.bridge:
-        return colorScheme.tertiary;
+        return cs.tertiaryContainer.withValues(alpha: 0.28);
       case SectionType.preChorus:
-        return colorScheme.secondaryContainer;
+        return cs.secondaryContainer.withValues(alpha: 0.16);
+      case SectionType.intro:
+      case SectionType.outro:
+        return cs.primaryContainer.withValues(alpha: 0.16);
+      case SectionType.solo:
+        return cs.tertiaryContainer.withValues(alpha: 0.22);
       default:
-        return colorScheme.surfaceContainerHighest;
+        return cs.surfaceContainerHighest.withValues(alpha: 0.35);
     }
   }
 }

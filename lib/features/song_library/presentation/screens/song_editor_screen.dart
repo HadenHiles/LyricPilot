@@ -11,32 +11,72 @@ import '../../domain/models/song_section.dart';
 import '../providers/song_library_provider.dart';
 
 // ─────────────────────────────────────────────────────────
+// Word-position helpers
+// ─────────────────────────────────────────────────────────
+
+typedef _WordEntry = ({String word, int position});
+
+/// Splits [lyric] into non-whitespace tokens, recording each token's
+/// start character offset in the original string.
+List<_WordEntry> _splitWords(String lyric) {
+  final result = <_WordEntry>[];
+  for (final m in RegExp(r'\S+').allMatches(lyric)) {
+    result.add((word: m.group(0)!, position: m.start));
+  }
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────
 // Editor state helpers (local, not domain models)
 // ─────────────────────────────────────────────────────────
 
 class _EditableLine {
   final String id;
   final TextEditingController lyricCtrl;
-  final TextEditingController chordsCtrl;
 
-  _EditableLine({required this.id, String lyric = '', String chords = ''}) : lyricCtrl = TextEditingController(text: lyric), chordsCtrl = TextEditingController(text: chords);
+  /// Maps word index (0-based) → chord symbol assigned to that word.
+  Map<int, String> chordByWordIndex;
 
-  void dispose() {
-    lyricCtrl.dispose();
-    chordsCtrl.dispose();
-  }
+  /// When true the line widget auto-enters lyric-edit mode on first build.
+  /// The widget clears this flag once consumed.
+  bool autoFocus;
+
+  _EditableLine({required this.id, String lyric = '', Map<int, String>? chords, this.autoFocus = false}) : lyricCtrl = TextEditingController(text: lyric), chordByWordIndex = chords ?? {};
+
+  void dispose() => lyricCtrl.dispose();
 
   SongLine toSongLine() {
     final lyric = lyricCtrl.text.trim();
-    final names = chordsCtrl.text.trim().split(RegExp(r'\s+')).where((c) => c.isNotEmpty).toList();
-    return SongLine(id: id, lyric: lyric, chords: _buildChords(names, lyric));
+    final words = _splitWords(lyric);
+    final events = <ChordEvent>[];
+    for (final entry in chordByWordIndex.entries) {
+      if (entry.key >= words.length) continue;
+      events.add(ChordEvent(chord: entry.value, position: words[entry.key].position));
+    }
+    events.sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
+    return SongLine(id: id, lyric: lyric, chords: events);
   }
 
-  static List<ChordEvent> _buildChords(List<String> names, String lyric) {
-    if (names.isEmpty) return [];
-    if (lyric.isEmpty) return names.map((n) => ChordEvent(chord: n)).toList();
-    final step = lyric.length / names.length;
-    return names.asMap().entries.map((e) => ChordEvent(chord: e.value, position: (e.key * step).round().clamp(0, lyric.length))).toList();
+  /// Load chord events from a persisted [SongLine], mapping char offsets
+  /// back to the nearest word index.
+  static _EditableLine fromSongLine(SongLine line) {
+    final words = _splitWords(line.lyric);
+    final chords = <int, String>{};
+    for (final chord in line.chords) {
+      final pos = chord.position ?? 0;
+      if (words.isEmpty) continue;
+      int closestIdx = 0;
+      int minDist = (words[0].position - pos).abs();
+      for (int i = 1; i < words.length; i++) {
+        final d = (words[i].position - pos).abs();
+        if (d < minDist) {
+          minDist = d;
+          closestIdx = i;
+        }
+      }
+      chords[closestIdx] = chord.chord;
+    }
+    return _EditableLine(id: line.id, lyric: line.lyric, chords: chords);
   }
 }
 
@@ -45,7 +85,6 @@ class _EditableSection {
   final TextEditingController nameCtrl;
   SectionType type;
   final List<_EditableLine> lines;
-  bool isExpanded = true;
 
   _EditableSection({required this.id, String name = '', this.type = SectionType.verse, List<_EditableLine>? lines}) : nameCtrl = TextEditingController(text: name), lines = lines ?? [];
 
@@ -63,7 +102,7 @@ class _EditableSection {
 // Main screen
 // ─────────────────────────────────────────────────────────
 
-/// Creates or edits a song.
+/// Creates or edits a song using a lyrics-first interface.
 ///
 /// Pass [songId] to edit an existing song; leave null to create a new one.
 class SongEditorScreen extends ConsumerStatefulWidget {
@@ -109,17 +148,7 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
     _bpmCtrl.text = song.bpm?.toString() ?? '';
     _notesCtrl.text = song.notes ?? '';
     for (final section in song.sections) {
-      _sections.add(
-        _EditableSection(
-          id: section.id,
-          name: section.name,
-          type: section.type,
-          lines: section.lines.map((line) {
-            final chordStr = line.chords.map((c) => c.chord).join(' ');
-            return _EditableLine(id: line.id, lyric: line.lyric, chords: chordStr);
-          }).toList(),
-        ),
-      );
+      _sections.add(_EditableSection(id: section.id, name: section.name, type: section.type, lines: section.lines.map(_EditableLine.fromSongLine).toList()));
     }
   }
 
@@ -137,20 +166,12 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
   }
 
   String _newId() => 'id_${DateTime.now().millisecondsSinceEpoch}_${_sections.length}';
-  String _newLineId(int si) => 'line_${DateTime.now().microsecondsSinceEpoch}_$si';
 
   void _addSection() => setState(() => _sections.add(_EditableSection(id: _newId())));
 
   void _removeSection(int i) => setState(() {
     _sections[i].dispose();
     _sections.removeAt(i);
-  });
-
-  void _addLine(int si) => setState(() => _sections[si].lines.add(_EditableLine(id: _newLineId(si))));
-
-  void _removeLine(int si, int li) => setState(() {
-    _sections[si].lines[li].dispose();
-    _sections[si].lines.removeAt(li);
   });
 
   Future<void> _save() async {
@@ -198,20 +219,26 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 120),
           children: [
-            _MetadataCard(titleCtrl: _titleCtrl, artistCtrl: _artistCtrl, keyCtrl: _keyCtrl, bpmCtrl: _bpmCtrl, notesCtrl: _notesCtrl),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Text('Sections', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                const Spacer(),
-                TextButton.icon(onPressed: _addSection, icon: const Icon(Icons.add, size: 18), label: const Text('Add Section')),
-              ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _MetadataCard(titleCtrl: _titleCtrl, artistCtrl: _artistCtrl, keyCtrl: _keyCtrl, bpmCtrl: _bpmCtrl, notesCtrl: _notesCtrl),
+            ),
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Text('Sections', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  TextButton.icon(onPressed: _addSection, icon: const Icon(Icons.add, size: 18), label: const Text('Add Section')),
+                ],
+              ),
             ),
             if (_sections.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
+                padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
                 child: Center(
                   child: Text(
                     'No sections yet.\nTap "Add Section" to start building your song.',
@@ -220,7 +247,7 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
                   ),
                 ),
               ),
-            ...List.generate(_sections.length, (i) => _SectionEditor(key: ValueKey(_sections[i].id), section: _sections[i], onRemove: () => _removeSection(i), onAddLine: () => _addLine(i), onRemoveLine: (li) => _removeLine(i, li), onStructureChanged: () => setState(() {}))),
+            ...List.generate(_sections.length, (i) => _SectionEditor(key: ValueKey(_sections[i].id), section: _sections[i], onRemove: () => _removeSection(i))),
           ],
         ),
       ),
@@ -305,74 +332,134 @@ class _MetadataCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────
-// Section editor
+// Section editor — tinted container, subtle label, lyrics-first lines
 // ─────────────────────────────────────────────────────────
 
 class _SectionEditor extends StatefulWidget {
   final _EditableSection section;
   final VoidCallback onRemove;
-  final VoidCallback onAddLine;
-  final void Function(int li) onRemoveLine;
-  final VoidCallback onStructureChanged;
 
-  const _SectionEditor({super.key, required this.section, required this.onRemove, required this.onAddLine, required this.onRemoveLine, required this.onStructureChanged});
+  const _SectionEditor({super.key, required this.section, required this.onRemove});
 
   @override
   State<_SectionEditor> createState() => _SectionEditorState();
 }
 
 class _SectionEditorState extends State<_SectionEditor> {
+  int _lineSeq = 0;
+
+  String _newLineId() => 'line_${DateTime.now().microsecondsSinceEpoch}_${_lineSeq++}';
+
+  void _addLineAfter(int lineIdx) {
+    setState(() {
+      final l = _EditableLine(id: _newLineId(), autoFocus: true);
+      widget.section.lines.insert(lineIdx + 1, l);
+    });
+  }
+
+  void _addLineAtEnd() {
+    setState(() {
+      widget.section.lines.add(_EditableLine(id: _newLineId(), autoFocus: true));
+    });
+  }
+
+  void _removeLine(int li) {
+    setState(() {
+      widget.section.lines[li].dispose();
+      widget.section.lines.removeAt(li);
+    });
+  }
+
+  Color _sectionTint(SectionType type, ColorScheme cs) {
+    switch (type) {
+      case SectionType.chorus:
+        return cs.primaryContainer.withValues(alpha: 0.28);
+      case SectionType.verse:
+        return cs.secondaryContainer.withValues(alpha: 0.28);
+      case SectionType.bridge:
+        return cs.tertiaryContainer.withValues(alpha: 0.28);
+      case SectionType.preChorus:
+        return cs.secondaryContainer.withValues(alpha: 0.16);
+      case SectionType.intro:
+      case SectionType.outro:
+        return cs.primaryContainer.withValues(alpha: 0.16);
+      case SectionType.solo:
+        return cs.tertiaryContainer.withValues(alpha: 0.22);
+      default:
+        return cs.surfaceContainerHighest.withValues(alpha: 0.35);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final cs = theme.colorScheme;
     final section = widget.section;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+      decoration: BoxDecoration(
+        color: _sectionTint(section.type, cs),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row
+          // ── Section header ──────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+            padding: const EdgeInsets.fromLTRB(14, 10, 6, 4),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Type badge label
+                Text(
+                  section.type.displayName.toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.55), letterSpacing: 1.4, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 8),
+                // Editable section name (custom label, e.g. "Verse 1")
                 Expanded(
-                  child: TextFormField(
+                  child: TextField(
                     controller: section.nameCtrl,
+                    style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     decoration: InputDecoration(
-                      labelText: 'Section name',
                       hintText: section.type.displayName,
+                      hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
                       isDense: true,
+                      contentPadding: EdgeInsets.zero,
                       border: InputBorder.none,
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: colorScheme.primary)),
                     ),
                   ),
                 ),
-                IconButton(icon: Icon(section.isExpanded ? Icons.expand_less : Icons.expand_more), onPressed: () => setState(() => section.isExpanded = !section.isExpanded)),
-                IconButton(icon: const Icon(Icons.delete_outline), color: colorScheme.error, tooltip: 'Remove section', onPressed: widget.onRemove),
+                // Remove section
+                IconButton(icon: const Icon(Icons.delete_outline, size: 18), color: cs.error.withValues(alpha: 0.65), padding: const EdgeInsets.all(8), tooltip: 'Remove section', onPressed: widget.onRemove),
               ],
             ),
           ),
-          // Type chips
+
+          // Type chips (compact, de-emphasised)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
             child: _SectionTypePicker(value: section.type, onChanged: (t) => setState(() => section.type = t)),
           ),
-          if (section.isExpanded) ...[
-            const Divider(height: 1),
-            ...section.lines.asMap().entries.map((e) => _LineEditor(key: ValueKey(e.value.id), line: e.value, onRemove: () => widget.onRemoveLine(e.key))),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: OutlinedButton.icon(
-                onPressed: widget.onAddLine,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add Line'),
-                style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 40)),
-              ),
+
+          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.3)),
+          const SizedBox(height: 2),
+
+          // ── Lines ────────────────────────────────────────
+          ...section.lines.asMap().entries.map((e) => _LyricsFirstLineWidget(key: ValueKey(e.value.id), line: e.value, onRemove: () => _removeLine(e.key), onAddLineBelow: () => _addLineAfter(e.key))),
+
+          // Add-line button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
+            child: TextButton.icon(
+              onPressed: _addLineAtEnd,
+              icon: const Icon(Icons.add, size: 15),
+              label: const Text('Add Line'),
+              style: TextButton.styleFrom(foregroundColor: cs.onSurfaceVariant.withValues(alpha: 0.65), textStyle: const TextStyle(fontSize: 13), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -397,13 +484,14 @@ class _SectionTypePicker extends StatelessWidget {
         children: SectionType.values
             .map(
               (type) => Padding(
-                padding: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.only(right: 5),
                 child: FilterChip(
-                  label: Text(type.displayName, style: const TextStyle(fontSize: 12)),
+                  label: Text(type.displayName, style: const TextStyle(fontSize: 11)),
                   selected: type == value,
                   onSelected: (_) => onChanged(type),
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                 ),
               ),
             )
@@ -414,51 +502,292 @@ class _SectionTypePicker extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────
-// Line editor — lyric text + chord text
+// Lyrics-first line widget
 // ─────────────────────────────────────────────────────────
 
-class _LineEditor extends StatelessWidget {
+/// Each line in the editor shows tappable chord-slot boxes above every word.
+///
+/// - Tap a word/empty chord box → chord picker dialog.
+/// - Tap the lyric text area (or empty placeholder) → inline text field.
+/// - Press Enter / Submit in the text field → create a new line below.
+class _LyricsFirstLineWidget extends StatefulWidget {
   final _EditableLine line;
   final VoidCallback onRemove;
+  final VoidCallback onAddLineBelow;
 
-  const _LineEditor({super.key, required this.line, required this.onRemove});
+  const _LyricsFirstLineWidget({super.key, required this.line, required this.onRemove, required this.onAddLineBelow});
+
+  @override
+  State<_LyricsFirstLineWidget> createState() => _LyricsFirstLineWidgetState();
+}
+
+class _LyricsFirstLineWidgetState extends State<_LyricsFirstLineWidget> {
+  bool _editingLyric = false;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Consume the one-shot autoFocus flag
+    if (widget.line.autoFocus) {
+      widget.line.autoFocus = false;
+      _editingLyric = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    }
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus && _editingLyric && mounted) {
+        setState(() => _editingLyric = false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  // ── Chord picker ──────────────────────────────────────
+
+  Future<void> _pickChord(int wordIndex) async {
+    final lyric = widget.line.lyricCtrl.text;
+    final words = _splitWords(lyric);
+    if (wordIndex >= words.length) return;
+    final wordLabel = words[wordIndex].word;
+    final current = widget.line.chordByWordIndex[wordIndex];
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (_) => _ChordPickerDialog(word: wordLabel, initialChord: current),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      if (result.isEmpty) {
+        widget.line.chordByWordIndex.remove(wordIndex);
+      } else {
+        widget.line.chordByWordIndex[wordIndex] = result;
+      }
+    });
+  }
+
+  // ── Lyric editing ─────────────────────────────────────
+
+  void _startLyricEdit() {
+    setState(() => _editingLyric = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  void _onSubmitted(String _) {
+    setState(() => _editingLyric = false);
+    widget.onAddLineBelow();
+  }
+
+  // ── Build ──────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final lyric = widget.line.lyricCtrl.text;
+    final words = _splitWords(lyric);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 0),
+      padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Column(
-              children: [
-                TextField(
-                  controller: line.chordsCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Chords',
-                    hintText: 'G Am F C',
-                    isDense: true,
-                    prefixIcon: Icon(Icons.music_note, size: 16, color: colorScheme.primary),
-                  ),
-                  style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.w700, letterSpacing: 0.5),
-                  autocorrect: false,
-                  enableSuggestions: false,
-                ),
-                const SizedBox(height: 4),
-                TextField(
-                  controller: line.lyricCtrl,
-                  decoration: const InputDecoration(labelText: 'Lyric', hintText: 'Type lyric, or leave blank for chord-only line', isDense: true),
-                  textCapitalization: TextCapitalization.sentences,
-                ),
-              ],
-            ),
+            child: _editingLyric ? _buildEditField(theme, cs) : GestureDetector(onTap: _startLyricEdit, behavior: HitTestBehavior.opaque, child: _buildChordLyricView(theme, cs, lyric, words)),
           ),
-          IconButton(icon: const Icon(Icons.close, size: 18), color: colorScheme.error, tooltip: 'Remove line', onPressed: onRemove),
+          // Delete-line button
+          IconButton(icon: const Icon(Icons.close, size: 16), color: cs.onSurfaceVariant.withValues(alpha: 0.35), padding: const EdgeInsets.all(8), tooltip: 'Remove line', onPressed: widget.onRemove),
         ],
       ),
+    );
+  }
+
+  Widget _buildEditField(ThemeData theme, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: TextField(
+        controller: widget.line.lyricCtrl,
+        focusNode: _focusNode,
+        onChanged: (_) => setState(() {}), // rebuild chord slots live
+        onSubmitted: _onSubmitted,
+        textInputAction: TextInputAction.next,
+        textCapitalization: TextCapitalization.sentences,
+        style: theme.textTheme.bodyMedium,
+        decoration: InputDecoration(
+          hintText: 'Type lyrics…',
+          hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
+          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: cs.outlineVariant)),
+          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: cs.primary)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChordLyricView(ThemeData theme, ColorScheme cs, String lyric, List<_WordEntry> words) {
+    if (lyric.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          'Tap to add lyrics…',
+          style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.35), fontStyle: FontStyle.italic),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 10,
+        children: words.asMap().entries.map((e) {
+          return _WordChordSlot(word: e.value.word, chord: widget.line.chordByWordIndex[e.key], onTap: () => _pickChord(e.key));
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Word + chord-slot widget
+// ─────────────────────────────────────────────────────────
+
+/// Renders a word with a tappable chord slot above it.
+///
+/// The slot shows the assigned chord (if any) in a small coloured box,
+/// or a greyed-out empty box when no chord has been set.
+class _WordChordSlot extends StatelessWidget {
+  final String word;
+  final String? chord;
+  final VoidCallback onTap;
+
+  const _WordChordSlot({required this.word, this.chord, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final hasChord = chord != null && chord!.isNotEmpty;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Chord slot box
+          Container(
+            constraints: const BoxConstraints(minWidth: 30),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            margin: const EdgeInsets.only(bottom: 3),
+            decoration: BoxDecoration(
+              color: hasChord ? cs.primaryContainer.withValues(alpha: 0.55) : cs.surfaceContainerHighest.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: hasChord ? cs.primary.withValues(alpha: 0.5) : cs.outlineVariant.withValues(alpha: 0.45), width: 0.8),
+            ),
+            child: Text(
+              hasChord ? chord! : '',
+              style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700, color: hasChord ? cs.primary : cs.outlineVariant.withValues(alpha: 0.5), letterSpacing: 0.2, fontSize: 11),
+            ),
+          ),
+          // Word text
+          Text(word, style: theme.textTheme.bodyMedium),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Chord picker dialog
+// ─────────────────────────────────────────────────────────
+
+class _ChordPickerDialog extends StatefulWidget {
+  final String word;
+  final String? initialChord;
+
+  const _ChordPickerDialog({required this.word, this.initialChord});
+
+  @override
+  State<_ChordPickerDialog> createState() => _ChordPickerDialogState();
+}
+
+class _ChordPickerDialogState extends State<_ChordPickerDialog> {
+  late final TextEditingController _ctrl;
+
+  static const _common = ['Am', 'C', 'D', 'Em', 'F', 'G', 'A', 'Bm', 'Dm', 'E', 'G7', 'Am7', 'Cadd9', 'D/F#', 'F#m', 'E7', 'A7', 'B7'];
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialChord ?? '');
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final hasExisting = widget.initialChord != null && widget.initialChord!.isNotEmpty;
+
+    return AlertDialog(
+      title: Text('Chord on "${widget.word}"', style: theme.textTheme.titleSmall),
+      contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            textCapitalization: TextCapitalization.none,
+            decoration: const InputDecoration(hintText: 'e.g. G, Am7, F#m', isDense: true),
+            onSubmitted: (_) => Navigator.pop(context, _ctrl.text.trim()),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 5,
+            children: _common
+                .map(
+                  (c) => ActionChip(
+                    label: Text(c, style: const TextStyle(fontSize: 12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _ctrl.text = c),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+      actions: [
+        if (hasExisting)
+          TextButton(
+            onPressed: () => Navigator.pop(context, ''),
+            style: TextButton.styleFrom(foregroundColor: cs.error),
+            child: const Text('Clear'),
+          ),
+        TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, _ctrl.text.trim()), child: const Text('Done')),
+      ],
     );
   }
 }
