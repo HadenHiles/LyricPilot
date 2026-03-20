@@ -116,28 +116,31 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
-        fit: StackFit.expand,
         children: [
           // ── Content area — tap toggles controls ───────────────────────────
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _onContentTap,
-            child: _ContentLayer(
-              song: song,
-              state: perfState,
-              onScrollActivated: (si, li) {
-                ref.read(performanceNotifierProvider(widget.songId).notifier).jumpToLine(si, li);
-              },
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _onContentTap,
+              child: _ContentLayer(
+                song: song,
+                state: perfState,
+                onScrollActivated: (si, li) {
+                  ref.read(performanceNotifierProvider(widget.songId).notifier).jumpToLine(si, li);
+                },
+              ),
             ),
           ),
 
           // ── Controls overlay (header only) — pointer-transparent when hidden
-          IgnorePointer(
-            ignoring: !perfState.controlsVisible,
-            child: AnimatedOpacity(
-              opacity: perfState.controlsVisible ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: _ControlsLayer(song: song, state: perfState, notifier: notifier, onInteraction: _onControlInteraction, onClose: () => Navigator.of(context).pop(), onSettings: _openSettings, onEdit: () => context.push('/song/${widget.songId}/edit')),
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: !perfState.controlsVisible,
+              child: AnimatedOpacity(
+                opacity: perfState.controlsVisible ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                child: _ControlsLayer(song: song, state: perfState, notifier: notifier, onInteraction: _onControlInteraction, onClose: () => Navigator.of(context).pop(), onSettings: _openSettings, onEdit: () => context.push('/song/${widget.songId}/edit')),
+              ),
             ),
           ),
 
@@ -150,13 +153,14 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
           ),
 
           // ── Welcome overlay — purely visual; always pointer-transparent so
-          //    taps fall through to the GestureDetector beneath, which calls
-          //    _onFirstInteraction and dismisses it.
-          IgnorePointer(
-            child: AnimatedOpacity(
-              opacity: _showWelcome ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 600),
-              child: _WelcomeOverlay(song: song),
+          //    taps fall through to the GestureDetector beneath.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _showWelcome ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 600),
+                child: _WelcomeOverlay(song: song),
+              ),
             ),
           ),
         ],
@@ -309,11 +313,11 @@ class _ContentLayerState extends State<_ContentLayer> {
     final activeSi = widget.state.sectionIndex;
     final activeLi = widget.state.lineIndex;
 
-    // halfH: screen-height based so it is always finite regardless of how
-    // layout constraints flow from the parent Stack. Using LayoutBuilder here
-    // was unreliable on Android — SafeArea can still surface maxHeight ==
-    // double.infinity in certain layout passes, propagating into RenderPadding.
-    final halfH = MediaQuery.sizeOf(context).height / 2;
+    // halfH: half the physical screen height, used as top+bottom scroll buffer
+    // so every line can be centred in the spotlight. Guard against pre-layout
+    // frames where sizeOf may return zero or non-finite values.
+    final screenH = MediaQuery.sizeOf(context).height;
+    final halfH = (screenH.isFinite && screenH > 0) ? screenH / 2 : 400.0;
 
     final contentItems = <Widget>[];
     for (int si = 0; si < widget.song.sections.length; si++) {
@@ -327,25 +331,24 @@ class _ContentLayerState extends State<_ContentLayer> {
     }
 
     return Stack(
-      fit: StackFit.expand,
       children: [
         // ── Scrollable song list ────────────────────────────────────────────
-        SafeArea(
-          bottom: false, // footer handles its own bottom safe-area
-          child: NotificationListener<ScrollEndNotification>(
-            onNotification: (_) {
-              if (!_suppressScrollActivation) _activateNearestLine();
-              return false;
-            },
-            child: SingleChildScrollView(
-              key: _scrollKey, // used by _snapToCenter / _activateNearestLine
-              controller: _scrollCtrl,
-              // Padding encodes the half-screen buffers that let the first and
-              // last lines be scrolled into the spotlight centre.
-              padding: EdgeInsets.fromLTRB(16, halfH, 16, halfH),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: contentItems,
+        // Positioned.fill derives explicit tight bounds from the Stack's own
+        // coordinate system — this prevents the tight-infinite constraint
+        // cascade that StackFit.expand causes on Android immersive transitions.
+        Positioned.fill(
+          child: SafeArea(
+            bottom: false, // footer handles its own bottom safe-area
+            child: NotificationListener<ScrollEndNotification>(
+              onNotification: (_) {
+                if (!_suppressScrollActivation) _activateNearestLine();
+                return false;
+              },
+              child: SingleChildScrollView(
+                key: _scrollKey,
+                controller: _scrollCtrl,
+                padding: EdgeInsets.fromLTRB(16, halfH, 16, halfH),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: contentItems),
               ),
             ),
           ),
