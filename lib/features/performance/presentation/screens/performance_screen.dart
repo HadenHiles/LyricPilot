@@ -309,7 +309,12 @@ class _ContentLayerState extends State<_ContentLayer> {
     final activeSi = widget.state.sectionIndex;
     final activeLi = widget.state.lineIndex;
 
-    // Build section + line widgets (without spacers — added inside LayoutBuilder).
+    // halfH: screen-height based so it is always finite regardless of how
+    // layout constraints flow from the parent Stack. Using LayoutBuilder here
+    // was unreliable on Android — SafeArea can still surface maxHeight ==
+    // double.infinity in certain layout passes, propagating into RenderPadding.
+    final halfH = MediaQuery.sizeOf(context).height / 2;
+
     final contentItems = <Widget>[];
     for (int si = 0; si < widget.song.sections.length; si++) {
       final section = widget.song.sections[si];
@@ -322,34 +327,27 @@ class _ContentLayerState extends State<_ContentLayer> {
     }
 
     return Stack(
-      fit: StackFit.expand, // ensures SafeArea gets tight finite constraints
+      fit: StackFit.expand,
       children: [
         // ── Scrollable song list ────────────────────────────────────────────
         SafeArea(
-          key: _scrollKey,
-          child: LayoutBuilder(
-            builder: (ctx, constraints) {
-              // Half-screen buffers let every line be scrolled to centre.
-              final halfH = constraints.maxHeight / 2;
-              return NotificationListener<ScrollEndNotification>(
-                onNotification: (_) {
-                  if (!_suppressScrollActivation) _activateNearestLine();
-                  return false;
-                },
-                child: SingleChildScrollView(
-                  controller: _scrollCtrl,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(height: halfH),
-                      ...contentItems,
-                      SizedBox(height: halfH),
-                    ],
-                  ),
-                ),
-              );
+          bottom: false, // footer handles its own bottom safe-area
+          child: NotificationListener<ScrollEndNotification>(
+            onNotification: (_) {
+              if (!_suppressScrollActivation) _activateNearestLine();
+              return false;
             },
+            child: SingleChildScrollView(
+              key: _scrollKey, // used by _snapToCenter / _activateNearestLine
+              controller: _scrollCtrl,
+              // Padding encodes the half-screen buffers that let the first and
+              // last lines be scrolled into the spotlight centre.
+              padding: EdgeInsets.fromLTRB(16, halfH, 16, halfH),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: contentItems,
+              ),
+            ),
           ),
         ),
 
