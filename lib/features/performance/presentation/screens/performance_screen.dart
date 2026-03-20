@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../song_library/domain/models/song.dart';
@@ -130,14 +131,30 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
             ),
           ),
 
-          // ── Controls overlay — pointer-transparent when hidden ─────────────
+          // ── Controls overlay (header only) — pointer-transparent when hidden
           IgnorePointer(
             ignoring: !perfState.controlsVisible,
             child: AnimatedOpacity(
               opacity: perfState.controlsVisible ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
-              child: _ControlsLayer(song: song, state: perfState, notifier: notifier, onInteraction: _onControlInteraction, onClose: () => Navigator.of(context).pop(), onSettings: _openSettings),
+              child: _ControlsLayer(
+                song: song,
+                state: perfState,
+                notifier: notifier,
+                onInteraction: _onControlInteraction,
+                onClose: () => Navigator.of(context).pop(),
+                onSettings: _openSettings,
+                onEdit: () => context.push('/song/${widget.songId}/edit'),
+              ),
             ),
+          ),
+
+          // ── Footer controls — always visible ──────────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _FooterBar(state: perfState, notifier: notifier, onInteraction: _onControlInteraction),
           ),
 
           // ── Welcome overlay — purely visual; always pointer-transparent so
@@ -175,46 +192,81 @@ class _ContentLayer extends StatefulWidget {
 class _ContentLayerState extends State<_ContentLayer> {
   final _scrollCtrl = ScrollController();
 
-  // Maps (sectionIndex, lineIndex) → a GlobalKey for that line widget so
-  // Scrollable.ensureVisible can animate to it when the active line changes.
+  /// Key on the SafeArea so we can read the viewport's screen position + size.
+  final _scrollKey = GlobalKey();
+
+  /// Maps (sectionIndex, lineIndex) → GlobalKey for that _LineItem.
   final _lineKeys = <(int, int), GlobalKey>{};
 
-  // True while a programmatic scroll animation is in flight so that the
-  // ScrollEndNotification from that animation does not trigger scroll-activation
-  // and fight with the engine.
+  /// Suppresses scroll-activation while a programmatic snap animation runs.
   bool _suppressScrollActivation = false;
 
+  /// Current height fed to the spotlight AnimatedContainer.
+  double _spotlightHeight = 56.0;
+
   GlobalKey _keyFor(int si, int li) => _lineKeys.putIfAbsent((si, li), GlobalKey.new);
+
+  @override
+  void initState() {
+    super.initState();
+    // After the first frame the keys and scroll position are ready.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _snapToCenter(widget.state.sectionIndex, widget.state.lineIndex);
+    });
+  }
 
   @override
   void didUpdateWidget(_ContentLayer old) {
     super.didUpdateWidget(old);
     if (old.state.sectionIndex != widget.state.sectionIndex || old.state.lineIndex != widget.state.lineIndex) {
-      _scrollToActive();
+      _snapToCenter(widget.state.sectionIndex, widget.state.lineIndex);
     }
   }
 
-  void _scrollToActive() {
+  /// Scrolls so the given line is precisely centred in the viewport, and
+  /// animates the spotlight container to match the line's rendered height.
+  void _snapToCenter(int si, int li) {
     _suppressScrollActivation = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final ctx = _keyFor(widget.state.sectionIndex, widget.state.lineIndex).currentContext;
-      if (ctx != null) {
-        Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 400), curve: Curves.easeInOutCubic, alignment: 0.25);
-      }
-      // Reset after animation + small buffer.
-      Future.delayed(const Duration(milliseconds: 500), () {
+
+      final lineCtx = _keyFor(si, li).currentContext;
+      final scrollCtx = _scrollKey.currentContext;
+      if (lineCtx == null || scrollCtx == null) return;
+
+      final lineRb = lineCtx.findRenderObject() as RenderBox?;
+      final scrollRb = scrollCtx.findRenderObject() as RenderBox?;
+      if (lineRb == null || scrollRb == null || !_scrollCtrl.hasClients) return;
+
+      // All positions in global (screen) coordinates.
+      final scrollTopGlobal = scrollRb.localToGlobal(Offset.zero).dy;
+      final lineTopGlobal = lineRb.localToGlobal(Offset.zero).dy;
+
+      final lineTopInViewport = lineTopGlobal - scrollTopGlobal;
+      final viewportH = scrollRb.size.height;
+      final lineH = lineRb.size.height;
+
+      // Scroll so the line's centre aligns with the viewport centre.
+      final targetOffset = (_scrollCtrl.offset + lineTopInViewport - (viewportH - lineH) / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+
+      _scrollCtrl.animateTo(targetOffset, duration: const Duration(milliseconds: 380), curve: Curves.easeInOutCubic);
+
+      // Animate the spotlight height to hug this line.
+      setState(() => _spotlightHeight = lineH);
+
+      Future.delayed(const Duration(milliseconds: 450), () {
         if (mounted) _suppressScrollActivation = false;
       });
     });
   }
 
-  /// Called by the ScrollEndNotification listener when the user's scroll
-  /// settles.  Finds the line whose vertical centre is closest to the middle
-  /// of the screen and notifies the parent.
+  /// After the user's scroll settles, activates the line whose centre is closest
+  /// to the viewport centre, then snaps it into the spotlight.
   void _activateNearestLine() {
-    if (!mounted || widget.onScrollActivated == null) return;
-    final screenCenterY = MediaQuery.of(context).size.height / 2;
+    if (!mounted) return;
+
+    final scrollRb = _scrollKey.currentContext?.findRenderObject() as RenderBox?;
+    final viewportCenterY = scrollRb != null ? scrollRb.localToGlobal(Offset.zero).dy + scrollRb.size.height / 2 : MediaQuery.of(context).size.height / 2;
 
     double bestDist = double.infinity;
     int bestSi = 0;
@@ -226,9 +278,8 @@ class _ContentLayerState extends State<_ContentLayer> {
       if (ctx == null) continue;
       final rb = ctx.findRenderObject() as RenderBox?;
       if (rb == null || !rb.attached) continue;
-      final pos = rb.localToGlobal(Offset.zero);
-      final lineCenterY = pos.dy + rb.size.height / 2;
-      final dist = (lineCenterY - screenCenterY).abs();
+      final lineCenterY = rb.localToGlobal(Offset.zero).dy + rb.size.height / 2;
+      final dist = (lineCenterY - viewportCenterY).abs();
       if (dist < bestDist) {
         bestDist = dist;
         bestSi = entry.key.$1;
@@ -237,7 +288,15 @@ class _ContentLayerState extends State<_ContentLayer> {
       }
     }
 
-    if (found) widget.onScrollActivated!(bestSi, bestLi);
+    if (!found) return;
+
+    // Notify the notifier (updates state → didUpdateWidget → _snapToCenter).
+    widget.onScrollActivated?.call(bestSi, bestLi);
+
+    // In case the notifier doesn't change the state (same line), still snap.
+    if (bestSi == widget.state.sectionIndex && bestLi == widget.state.lineIndex) {
+      _snapToCenter(bestSi, bestLi);
+    }
   }
 
   @override
@@ -258,31 +317,67 @@ class _ContentLayerState extends State<_ContentLayer> {
     final activeSi = widget.state.sectionIndex;
     final activeLi = widget.state.lineIndex;
 
-    final items = <Widget>[];
+    // Build section + line widgets (without spacers — added inside LayoutBuilder).
+    final contentItems = <Widget>[];
     for (int si = 0; si < widget.song.sections.length; si++) {
       final section = widget.song.sections[si];
-      items.add(_InlineSectionHeader(section: section));
-      items.add(const SizedBox(height: 8));
+      contentItems.add(_InlineSectionHeader(section: section));
+      contentItems.add(const SizedBox(height: 8));
       for (int li = 0; li < section.lines.length; li++) {
-        items.add(_LineItem(key: _keyFor(si, li), line: section.lines[li], isActive: si == activeSi && li == activeLi, activeChordIndex: (si == activeSi && li == activeLi) ? widget.state.chordIndex : -1, fontSize: widget.state.fontSize, lineSpacing: widget.state.lineSpacing, colorScheme: cs));
+        contentItems.add(_LineItem(key: _keyFor(si, li), line: section.lines[li], isActive: si == activeSi && li == activeLi, activeChordIndex: (si == activeSi && li == activeLi) ? widget.state.chordIndex : -1, fontSize: widget.state.fontSize, lineSpacing: widget.state.lineSpacing, colorScheme: cs));
       }
-      items.add(const SizedBox(height: 28));
+      contentItems.add(const SizedBox(height: 28));
     }
-    // Extra bottom clearance so the last line isn't hidden behind the footer.
-    items.add(const SizedBox(height: 120));
 
-    return SafeArea(
-      child: NotificationListener<ScrollEndNotification>(
-        onNotification: (notification) {
-          if (!_suppressScrollActivation) _activateNearestLine();
-          return false;
-        },
-        child: SingleChildScrollView(
-          controller: _scrollCtrl,
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: items),
+    return Stack(
+      children: [
+        // ── Scrollable song list ────────────────────────────────────────────
+        SafeArea(
+          key: _scrollKey,
+          child: LayoutBuilder(
+            builder: (ctx, constraints) {
+              // Half-screen buffers let every line be scrolled to centre.
+              final halfH = constraints.maxHeight / 2;
+              return NotificationListener<ScrollEndNotification>(
+                onNotification: (_) {
+                  if (!_suppressScrollActivation) _activateNearestLine();
+                  return false;
+                },
+                child: SingleChildScrollView(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: halfH),
+                      ...contentItems,
+                      SizedBox(height: halfH),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
-      ),
+
+        // ── Spotlight frame — fixed at viewport centre ───────────────────────
+        Align(
+          alignment: Alignment.center,
+          child: IgnorePointer(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeInOutCubic,
+              height: (_spotlightHeight + 16).clamp(40.0, 500.0),
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: 0.07),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.50), width: 1.5),
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -323,26 +418,26 @@ class _LineItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
-      decoration: BoxDecoration(
-        color: isActive ? colorScheme.primary.withValues(alpha: 0.10) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border: isActive ? Border(left: BorderSide(color: colorScheme.primary, width: 3)) : const Border(left: BorderSide(color: Colors.transparent, width: 3)),
-      ),
-      child: ChordLyricLine(
-        line: line,
-        lyricStyle: TextStyle(color: isActive ? Colors.white : Colors.white60, fontSize: fontSize, height: lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400),
-        chordStyle: TextStyle(
-          color: colorScheme.primary.withValues(alpha: isActive ? 1.0 : 0.45),
-          fontSize: fontSize * 0.60,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-          height: 1.1,
+    // The spotlight frame handles all active-line decoration — _LineItem just
+    // controls the text colour/weight so lines are readable when dimmed.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: isActive ? 1.0 : 0.38,
+        child: ChordLyricLine(
+          line: line,
+          lyricStyle: TextStyle(color: Colors.white, fontSize: fontSize, height: lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400),
+          chordStyle: TextStyle(
+            color: colorScheme.primary.withValues(alpha: isActive ? 1.0 : 0.7),
+            fontSize: fontSize * 0.60,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            height: 1.1,
+          ),
+          displayMode: ChordDisplayMode.stacked,
+          activeChordIndex: activeChordIndex,
         ),
-        displayMode: ChordDisplayMode.stacked,
-        activeChordIndex: activeChordIndex,
       ),
     );
   }
@@ -357,15 +452,14 @@ class _ControlsLayer extends StatelessWidget {
   final VoidCallback onInteraction;
   final VoidCallback onClose;
   final VoidCallback onSettings;
+  final VoidCallback onEdit;
 
-  const _ControlsLayer({required this.song, required this.state, required this.notifier, required this.onInteraction, required this.onClose, required this.onSettings});
+  const _ControlsLayer({required this.song, required this.state, required this.notifier, required this.onInteraction, required this.onClose, required this.onSettings, required this.onEdit});
 
   static const _overlay = Color(0xD0000000);
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Column(
       children: [
         // ── Header bar ────────────────────────────────────────────────────
@@ -401,14 +495,30 @@ class _ControlsLayer extends StatelessWidget {
                           style: const TextStyle(color: Colors.white38, fontSize: 12),
                           overflow: TextOverflow.ellipsis,
                         ),
+                        // Key · BPM — compact info row, auto-hides if both absent
+                        Builder(builder: (_) {
+                          final parts = [
+                            if (song.key != null) 'Key of ${song.key}',
+                            if (song.bpm != null) '${song.bpm} BPM',
+                          ];
+                          if (parts.isEmpty) return const SizedBox.shrink();
+                          return Text(
+                            parts.join('  ·  '),
+                            style: const TextStyle(color: Colors.white24, fontSize: 11),
+                          );
+                        }),
                       ],
                     ),
                   ),
-                  if (song.bpm != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: Text('${song.bpm} BPM', style: const TextStyle(color: Colors.white30, fontSize: 12)),
-                    ),
+                  // Edit song
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, color: Colors.white54),
+                    tooltip: 'Edit song',
+                    onPressed: () {
+                      onInteraction();
+                      onEdit();
+                    },
+                  ),
                   IconButton(
                     icon: const Icon(Icons.tune_rounded, color: Colors.white54),
                     tooltip: 'Performance settings',
@@ -422,62 +532,74 @@ class _ControlsLayer extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
 
-        const Spacer(),
+// ─── Footer bar (always visible) ─────────────────────────────────────────────
 
-        // ── Footer — music-player style ────────────────────────────────────
-        Container(
-          color: _overlay,
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Skip to beginning
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous_rounded),
-                    color: Colors.white70,
-                    iconSize: 34,
-                    tooltip: 'Skip to beginning',
-                    onPressed: () {
-                      notifier.stop();
-                      onInteraction();
-                    },
-                  ),
-                  const SizedBox(width: 28),
-                  // Play / Pause — large circular button
-                  GestureDetector(
-                    onTap: () {
-                      notifier.togglePlayPause();
-                      onInteraction();
-                    },
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary),
-                      child: Icon(state.playback.isAdvancing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.black87, size: 42),
-                    ),
-                  ),
-                  const SizedBox(width: 28),
-                  // Skip to end
-                  IconButton(
-                    icon: const Icon(Icons.skip_next_rounded),
-                    color: Colors.white70,
-                    iconSize: 34,
-                    tooltip: 'Skip to end',
-                    onPressed: () {
-                      notifier.jumpToEnd();
-                      onInteraction();
-                    },
-                  ),
-                ],
+/// Persistent music-player style footer with skip / play-pause / skip buttons.
+/// Lives outside the auto-hide [AnimatedOpacity] so it is always reachable.
+class _FooterBar extends StatelessWidget {
+  final PerformanceState state;
+  final PerformanceNotifier notifier;
+  final VoidCallback onInteraction;
+
+  const _FooterBar({required this.state, required this.notifier, required this.onInteraction});
+
+  static const _overlay = Color(0xD0000000);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      color: _overlay,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.skip_previous_rounded),
+                color: Colors.white70,
+                iconSize: 34,
+                tooltip: 'Skip to beginning',
+                onPressed: () {
+                  notifier.stop();
+                  onInteraction();
+                },
               ),
-            ),
+              const SizedBox(width: 28),
+              GestureDetector(
+                onTap: () {
+                  notifier.togglePlayPause();
+                  onInteraction();
+                },
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary),
+                  child: Icon(state.playback.isAdvancing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.black87, size: 42),
+                ),
+              ),
+              const SizedBox(width: 28),
+              IconButton(
+                icon: const Icon(Icons.skip_next_rounded),
+                color: Colors.white70,
+                iconSize: 34,
+                tooltip: 'Skip to end',
+                onPressed: () {
+                  notifier.jumpToEnd();
+                  onInteraction();
+                },
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

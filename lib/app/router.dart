@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../features/performance/presentation/screens/performance_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
-import '../features/song_library/presentation/screens/song_detail_screen.dart';
 import '../features/song_library/presentation/screens/song_editor_screen.dart';
 import '../features/song_library/presentation/screens/song_library_screen.dart';
 
@@ -17,10 +16,8 @@ final routerProvider = Provider<GoRouter>(
       GoRoute(path: '/song/new', builder: (context, state) => const SongEditorScreen()),
       GoRoute(
         path: '/song/:id',
-        builder: (context, state) {
-          final songId = state.pathParameters['id']!;
-          return SongDetailScreen(songId: songId);
-        },
+        // Skip the preview screen — go straight to performance.
+        redirect: (_, state) => '${state.uri.path}/performance',
         routes: [
           GoRoute(
             path: 'performance',

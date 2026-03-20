@@ -138,8 +138,11 @@ class _StackedLine extends StatelessWidget {
       chordAtWord[closest] = (symbol: sortedChords[ci].chord, chordIdx: ci);
     }
 
+    // Font-proportional word gap — approximates a natural space character width.
+    final wordSpacing = (lyricStyle.fontSize ?? 20.0) * 0.28;
+
     return Wrap(
-      spacing: 4,
+      spacing: wordSpacing,
       runSpacing: 8,
       children: words.asMap().entries.map((e) {
         final wi = e.key;
@@ -148,13 +151,21 @@ class _StackedLine extends StatelessWidget {
         final hasChord = entry != null;
         final isActive = hasChord && entry.chordIdx == activeChordIndex;
 
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Always render a chord container of identical size so all words
-            // share the same vertical offset to the lyric baseline.
-            Opacity(
+        // By wrapping the chord in SizedBox(width:0)+OverflowBox the Column is
+        // sized by the lyric word only.  Chords overflow to the right, matching
+        // printed chord-sheet convention — no gap when the chord name is wider
+        // than its word (e.g. "Cmaj7" over "I").
+        // maxHeight is explicit so we never propagate double.infinity into the
+        // chord Container/Text when this widget is inside an unconstrained
+        // scroll-view Column.
+        final chordLineH = (chordStyle.fontSize ?? 14.0) * 2.5 + 8;
+        final chordSlot = SizedBox(
+          width: 0,
+          child: OverflowBox(
+            maxWidth: 300,
+            maxHeight: chordLineH,
+            alignment: Alignment.topLeft,
+            child: Opacity(
               opacity: hasChord ? 1.0 : 0.0,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -163,6 +174,14 @@ class _StackedLine extends StatelessWidget {
                 child: Text(hasChord ? entry.symbol : 'A', style: chordStyle),
               ),
             ),
+          ),
+        );
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            chordSlot,
             Text(word, style: lyricStyle),
           ],
         );

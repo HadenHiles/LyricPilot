@@ -18,9 +18,9 @@ class SongListTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => context.push('/song/${song.id}'),
+        onTap: () => context.push('/song/${song.id}/performance'),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
           child: Row(
             children: [
               Expanded(
@@ -45,7 +45,7 @@ class SongListTile extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(icon: const Icon(Icons.play_circle_outline_rounded), color: colorScheme.primary, iconSize: 32, tooltip: 'Start performance', onPressed: () => context.push('/song/${song.id}/performance')),
+              Icon(Icons.chevron_right_rounded, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
             ],
           ),
         ),
