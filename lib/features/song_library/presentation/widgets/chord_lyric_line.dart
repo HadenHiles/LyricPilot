@@ -151,16 +151,16 @@ class _StackedLine extends StatelessWidget {
         final hasChord = entry != null;
         final isActive = hasChord && entry.chordIdx == activeChordIndex;
 
-        // By wrapping the chord in SizedBox(width:0)+OverflowBox the Column is
-        // sized by the lyric word only.  Chords overflow to the right, matching
-        // printed chord-sheet convention — no gap when the chord name is wider
-        // than its word (e.g. "Cmaj7" over "I").
-        // maxHeight is explicit so we never propagate double.infinity into the
-        // chord Container/Text when this widget is inside an unconstrained
-        // scroll-view Column.
+        // SizedBox(width:0, height:chordLineH) ensures the slot contributes
+        // zero width (Column width = word width only) while bounding the height
+        // so OverflowBox never receives maxHeight:infinity from the Column
+        // layout pass.  Without the height, OverflowBox sizes itself to the
+        // infinite incoming maxHeight, which cascades into an infinite inner-
+        // Column → infinite Wrap → crash.
         final chordLineH = (chordStyle.fontSize ?? 14.0) * 2.5 + 8;
         final chordSlot = SizedBox(
           width: 0,
+          height: chordLineH,
           child: OverflowBox(
             maxWidth: 300,
             maxHeight: chordLineH,
