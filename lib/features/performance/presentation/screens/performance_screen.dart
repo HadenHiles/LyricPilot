@@ -137,15 +137,7 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
             child: AnimatedOpacity(
               opacity: perfState.controlsVisible ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 300),
-              child: _ControlsLayer(
-                song: song,
-                state: perfState,
-                notifier: notifier,
-                onInteraction: _onControlInteraction,
-                onClose: () => Navigator.of(context).pop(),
-                onSettings: _openSettings,
-                onEdit: () => context.push('/song/${widget.songId}/edit'),
-              ),
+              child: _ControlsLayer(song: song, state: perfState, notifier: notifier, onInteraction: _onControlInteraction, onClose: () => Navigator.of(context).pop(), onSettings: _openSettings, onEdit: () => context.push('/song/${widget.songId}/edit')),
             ),
           ),
 
@@ -496,17 +488,13 @@ class _ControlsLayer extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         // Key · BPM — compact info row, auto-hides if both absent
-                        Builder(builder: (_) {
-                          final parts = [
-                            if (song.key != null) 'Key of ${song.key}',
-                            if (song.bpm != null) '${song.bpm} BPM',
-                          ];
-                          if (parts.isEmpty) return const SizedBox.shrink();
-                          return Text(
-                            parts.join('  ·  '),
-                            style: const TextStyle(color: Colors.white24, fontSize: 11),
-                          );
-                        }),
+                        Builder(
+                          builder: (_) {
+                            final parts = [if (song.key != null) 'Key of ${song.key}', if (song.bpm != null) '${song.bpm} BPM'];
+                            if (parts.isEmpty) return const SizedBox.shrink();
+                            return Text(parts.join('  ·  '), style: const TextStyle(color: Colors.white24, fontSize: 11));
+                          },
+                        ),
                       ],
                     ),
                   ),
