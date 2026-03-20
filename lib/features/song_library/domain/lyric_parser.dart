@@ -230,19 +230,64 @@ class LyricParser {
 
   // ── labeled mode ──────────────────────────────────────
 
+  /// Returns the [SectionType] that [line] is referencing if it is a single
+  /// "pointer" line such as `"Chorus"`, `"see chorus"`, `"repeat chorus x2"`.
+  /// Returns null for real lyric lines.
+  static SectionType? _referenceType(String line) {
+    // Normalise to lowercase alpha-space only.
+    final words = line.toLowerCase().replaceAll(RegExp(r'[^a-z\s]'), ' ').trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty || words.length > 5) return null;
+    // Strip common filler/navigation words and repeat counts.
+    const fillers = {'see', 'repeat', 'back', 'to', 'same', 'as', 'like', 'the', 'and', 'go'};
+    final meaningful = words.where((w) => !fillers.contains(w) && !RegExp(r'^(x?\d+|\d+x?)$').hasMatch(w)).toList();
+    if (meaningful.length != 1) return null;
+    const typeMap = {'chorus': SectionType.chorus, 'hook': SectionType.chorus, 'refrain': SectionType.chorus, 'verse': SectionType.verse, 'bridge': SectionType.bridge, 'intro': SectionType.intro, 'outro': SectionType.outro, 'coda': SectionType.outro};
+    return typeMap[meaningful.first];
+  }
+
   static List<ParsedSection> _parseLabeledSong(List<String> lines) {
     final sections = <ParsedSection>[];
     String? currentName;
     SectionType currentType = SectionType.verse;
     final buffer = <String>[];
 
+    // Tracks the most recently parsed content per section type so that empty
+    // or reference-only repeats (e.g. a bare "[Chorus]" with no body, or a
+    // section whose body is just "see chorus") can be expanded automatically.
+    final lastContentByType = <SectionType, List<ParsedLine>>{};
+
     void flush() {
       if (currentName == null) return;
       final trimmed = _trimBlanks(buffer);
-      if (trimmed.isNotEmpty) {
-        sections.add(ParsedSection(name: currentName, type: currentType, lines: _cookLines(trimmed)));
-      }
       buffer.clear();
+
+      if (trimmed.isEmpty) {
+        // No body — expand from previous definition of same type if present.
+        final prior = lastContentByType[currentType];
+        if (prior == null || prior.isEmpty) return;
+        sections.add(ParsedSection(name: currentName, type: currentType, lines: prior));
+        return;
+      }
+
+      final cooked = _cookLines(trimmed);
+      if (cooked.isEmpty) return;
+
+      // Single chord-free line check: if it looks like a section reference
+      // (e.g. "see chorus", "chorus", "repeat verse") expand from that type.
+      if (cooked.length == 1 && cooked.first.chordAtCharPos.isEmpty) {
+        final refType = _referenceType(cooked.first.lyric);
+        if (refType != null) {
+          final prior = lastContentByType[refType];
+          if (prior != null && prior.isNotEmpty) {
+            sections.add(ParsedSection(name: currentName, type: currentType, lines: prior));
+            return;
+          }
+        }
+      }
+
+      // Real content — record it as the canonical definition for this type.
+      lastContentByType[currentType] = cooked;
+      sections.add(ParsedSection(name: currentName, type: currentType, lines: cooked));
     }
 
     for (final raw in lines) {

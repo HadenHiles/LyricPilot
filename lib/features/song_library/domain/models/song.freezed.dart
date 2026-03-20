@@ -30,6 +30,7 @@ mixin _$Song {
   List<SongSection> get sections => throw _privateConstructorUsedError;
   DateTime get createdAt => throw _privateConstructorUsedError;
   DateTime get updatedAt => throw _privateConstructorUsedError;
+  DateTime? get pinnedAt => throw _privateConstructorUsedError;
 
   /// Serializes this Song to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -55,6 +56,7 @@ abstract class $SongCopyWith<$Res> {
     List<SongSection> sections,
     DateTime createdAt,
     DateTime updatedAt,
+    DateTime? pinnedAt,
   });
 }
 
@@ -82,6 +84,7 @@ class _$SongCopyWithImpl<$Res, $Val extends Song>
     Object? sections = null,
     Object? createdAt = null,
     Object? updatedAt = null,
+    Object? pinnedAt = freezed,
   }) {
     return _then(
       _value.copyWith(
@@ -121,6 +124,10 @@ class _$SongCopyWithImpl<$Res, $Val extends Song>
                 ? _value.updatedAt
                 : updatedAt // ignore: cast_nullable_to_non_nullable
                       as DateTime,
+            pinnedAt: freezed == pinnedAt
+                ? _value.pinnedAt
+                : pinnedAt // ignore: cast_nullable_to_non_nullable
+                      as DateTime?,
           )
           as $Val,
     );
@@ -145,6 +152,7 @@ abstract class _$$SongImplCopyWith<$Res> implements $SongCopyWith<$Res> {
     List<SongSection> sections,
     DateTime createdAt,
     DateTime updatedAt,
+    DateTime? pinnedAt,
   });
 }
 
@@ -169,6 +177,7 @@ class __$$SongImplCopyWithImpl<$Res>
     Object? sections = null,
     Object? createdAt = null,
     Object? updatedAt = null,
+    Object? pinnedAt = freezed,
   }) {
     return _then(
       _$SongImpl(
@@ -208,6 +217,10 @@ class __$$SongImplCopyWithImpl<$Res>
             ? _value.updatedAt
             : updatedAt // ignore: cast_nullable_to_non_nullable
                   as DateTime,
+        pinnedAt: freezed == pinnedAt
+            ? _value.pinnedAt
+            : pinnedAt // ignore: cast_nullable_to_non_nullable
+                  as DateTime?,
       ),
     );
   }
@@ -226,6 +239,7 @@ class _$SongImpl extends _Song {
     final List<SongSection> sections = const [],
     required this.createdAt,
     required this.updatedAt,
+    this.pinnedAt = null,
   }) : _sections = sections,
        super._();
 
@@ -257,10 +271,13 @@ class _$SongImpl extends _Song {
   final DateTime createdAt;
   @override
   final DateTime updatedAt;
+  @override
+  @JsonKey()
+  final DateTime? pinnedAt;
 
   @override
   String toString() {
-    return 'Song(id: $id, title: $title, artist: $artist, key: $key, bpm: $bpm, notes: $notes, sections: $sections, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'Song(id: $id, title: $title, artist: $artist, key: $key, bpm: $bpm, notes: $notes, sections: $sections, createdAt: $createdAt, updatedAt: $updatedAt, pinnedAt: $pinnedAt)';
   }
 
   @override
@@ -278,7 +295,9 @@ class _$SongImpl extends _Song {
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.updatedAt == updatedAt) &&
+            (identical(other.pinnedAt, pinnedAt) ||
+                other.pinnedAt == pinnedAt));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -294,6 +313,7 @@ class _$SongImpl extends _Song {
     const DeepCollectionEquality().hash(_sections),
     createdAt,
     updatedAt,
+    pinnedAt,
   );
 
   /// Create a copy of Song
@@ -321,6 +341,7 @@ abstract class _Song extends Song {
     final List<SongSection> sections,
     required final DateTime createdAt,
     required final DateTime updatedAt,
+    final DateTime? pinnedAt,
   }) = _$SongImpl;
   const _Song._() : super._();
 
@@ -344,6 +365,8 @@ abstract class _Song extends Song {
   DateTime get createdAt;
   @override
   DateTime get updatedAt;
+  @override
+  DateTime? get pinnedAt;
 
   /// Create a copy of Song
   /// with the given fields replaced by the non-null parameter values.

@@ -52,6 +52,14 @@ class SongLibraryNotifier extends _$SongLibraryNotifier {
     await _repo.save(copy);
     ref.invalidateSelf();
   }
+
+  Future<void> togglePin(String id) async {
+    final song = await _repo.getById(id);
+    if (song == null) return;
+    final pinned = song.pinnedAt == null ? DateTime.now() : null;
+    await _repo.save(song.copyWith(pinnedAt: pinned, updatedAt: DateTime.now()));
+    ref.invalidateSelf();
+  }
 }
 
 /// Songs filtered by the current [songSearchQueryProvider] value.
@@ -60,8 +68,21 @@ List<Song> filteredSongs(FilteredSongsRef ref) {
   final songsAsync = ref.watch(songLibraryNotifierProvider);
   final songs = songsAsync.valueOrNull ?? [];
   final query = ref.watch(songSearchQueryProvider).trim().toLowerCase();
-  if (query.isEmpty) return songs;
-  return songs.where((s) => s.title.toLowerCase().contains(query) || s.artist.toLowerCase().contains(query)).toList();
+  if (query.isEmpty) {
+    // Pinned first, then by updatedAt desc.
+    return songs..sort((a, b) {
+      if ((a.pinnedAt != null) != (b.pinnedAt != null)) {
+        return a.pinnedAt != null ? -1 : 1;
+      }
+      return b.updatedAt.compareTo(a.updatedAt);
+    });
+  }
+  return songs.where((s) => s.title.toLowerCase().contains(query) || s.artist.toLowerCase().contains(query)).toList()..sort((a, b) {
+    if ((a.pinnedAt != null) != (b.pinnedAt != null)) {
+      return a.pinnedAt != null ? -1 : 1;
+    }
+    return b.updatedAt.compareTo(a.updatedAt);
+  });
 }
 
 /// Looks up a single song by its [id]. Returns null if not found.

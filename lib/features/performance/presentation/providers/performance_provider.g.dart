@@ -7,7 +7,7 @@ part of 'performance_provider.dart';
 // **************************************************************************
 
 String _$performanceNotifierHash() =>
-    r'8bb0a085d87603feff5fdba10d4dd4d69113ba29';
+    r'ee58b2c72a59f24bc34a4c8820296ca84c808fa6';
 
 /// Copied from Dart SDK
 class _SystemHash {

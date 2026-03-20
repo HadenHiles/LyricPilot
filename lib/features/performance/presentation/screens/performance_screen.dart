@@ -280,6 +280,11 @@ class _ContentLayerState extends State<_ContentLayer> {
   /// Maps (sectionIndex, lineIndex) → GlobalKey for that _LineItem.
   final _lineKeys = <(int, int), GlobalKey>{};
 
+  /// Per-line proximity notifier (0.0 = far from centre, 1.0 = in spotlight).
+  /// Updated on every scroll tick so _LineItem can animate without rebuilding
+  /// the entire Content Layer on every frame.
+  final _lineFocusNotifiers = <(int, int), ValueNotifier<double>>{};
+
   /// Suppresses scroll-activation while a programmatic snap animation runs.
   bool _suppressScrollActivation = false;
 
@@ -291,9 +296,13 @@ class _ContentLayerState extends State<_ContentLayer> {
   @override
   void initState() {
     super.initState();
+    _scrollCtrl.addListener(_onScrollUpdate);
     // After the first frame the keys and scroll position are ready.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _snapToCenter(widget.state.sectionIndex, widget.state.lineIndex);
+      if (mounted) {
+        _snapToCenter(widget.state.sectionIndex, widget.state.lineIndex);
+        _updateLineFocusValues();
+      }
     });
   }
 
@@ -333,12 +342,12 @@ class _ContentLayerState extends State<_ContentLayer> {
       // Scroll so the line's centre aligns with the viewport centre.
       final targetOffset = (_scrollCtrl.offset + lineTopInViewport - (viewportH - lineH) / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
 
-      _scrollCtrl.animateTo(targetOffset, duration: const Duration(milliseconds: 380), curve: Curves.easeInOutCubic);
+      _scrollCtrl.animateTo(targetOffset, duration: const Duration(milliseconds: 550), curve: Curves.easeInOutSine);
 
       // Animate the spotlight height to hug this line.
       setState(() => _spotlightHeight = lineH);
 
-      Future.delayed(const Duration(milliseconds: 450), () {
+      Future.delayed(const Duration(milliseconds: 620), () {
         if (mounted) _suppressScrollActivation = false;
       });
     });
@@ -383,9 +392,44 @@ class _ContentLayerState extends State<_ContentLayer> {
     }
   }
 
+  ValueNotifier<double> _focusNotifierFor(int si, int li) => _lineFocusNotifiers.putIfAbsent((si, li), () => ValueNotifier(0.0));
+
+  void _onScrollUpdate() => _updateLineFocusValues();
+
+  /// Recomputes focus progress (0.0–1.0) for every line based on its distance
+  /// from the viewport centre.  Skips notifiers whose value hasn't changed
+  /// meaningfully to minimise per-frame widget rebuilds.
+  void _updateLineFocusValues() {
+    if (!mounted) return;
+    final scrollRb = _scrollKey.currentContext?.findRenderObject() as RenderBox?;
+    if (scrollRb == null) return;
+    final viewportCenterY = scrollRb.localToGlobal(Offset.zero).dy + scrollRb.size.height / 2;
+
+    for (final entry in _lineKeys.entries) {
+      final ctx = entry.value.currentContext;
+      if (ctx == null) continue;
+      final rb = ctx.findRenderObject() as RenderBox?;
+      if (rb == null || !rb.attached) continue;
+
+      final lineCenterY = rb.localToGlobal(Offset.zero).dy + rb.size.height / 2;
+      final dist = (lineCenterY - viewportCenterY).abs();
+      // Full focus within 60 px of centre; fades to 0 beyond 280 px.
+      const fullFocusDist = 60.0;
+      const zeroFocusDist = 280.0;
+      final newProg = ((zeroFocusDist - dist) / (zeroFocusDist - fullFocusDist)).clamp(0.0, 1.0);
+
+      final notifier = _focusNotifierFor(entry.key.$1, entry.key.$2);
+      if ((notifier.value - newProg).abs() > 0.005) notifier.value = newProg;
+    }
+  }
+
   @override
   void dispose() {
+    _scrollCtrl.removeListener(_onScrollUpdate);
     _scrollCtrl.dispose();
+    for (final n in _lineFocusNotifiers.values) {
+      n.dispose();
+    }
     super.dispose();
   }
 
@@ -407,7 +451,7 @@ class _ContentLayerState extends State<_ContentLayer> {
       contentItems.add(_InlineSectionHeader(section: section));
       contentItems.add(const SizedBox(height: 8));
       for (int li = 0; li < section.lines.length; li++) {
-        contentItems.add(_LineItem(key: _keyFor(si, li), line: section.lines[li], isActive: si == activeSi && li == activeLi, activeChordIndex: (si == activeSi && li == activeLi) ? widget.state.chordIndex : -1, fontSize: widget.state.fontSize, lineSpacing: widget.state.lineSpacing, colorScheme: cs));
+        contentItems.add(_LineItem(key: _keyFor(si, li), line: section.lines[li], isActive: si == activeSi && li == activeLi, activeChordIndex: (si == activeSi && li == activeLi) ? widget.state.chordIndex : -1, fontSize: widget.state.fontSize, lineSpacing: widget.state.lineSpacing, colorScheme: cs, focusNotifier: _focusNotifierFor(si, li)));
       }
       contentItems.add(const SizedBox(height: 28));
     }
@@ -497,7 +541,7 @@ class _InlineSectionHeader extends StatelessWidget {
 
 // ─── Song line item ───────────────────────────────────────────────────────────
 
-class _LineItem extends StatelessWidget {
+class _LineItem extends StatefulWidget {
   final SongLine line;
   final bool isActive;
   final int activeChordIndex;
@@ -505,30 +549,117 @@ class _LineItem extends StatelessWidget {
   final double lineSpacing;
   final ColorScheme colorScheme;
 
-  const _LineItem({super.key, required this.line, required this.isActive, required this.activeChordIndex, required this.fontSize, required this.lineSpacing, required this.colorScheme});
+  /// Scroll-driven proximity to the viewport centre (0.0–1.0).
+  /// Updated by _ContentLayerState on every scroll tick.
+  final ValueNotifier<double> focusNotifier;
+
+  const _LineItem({super.key, required this.line, required this.isActive, required this.activeChordIndex, required this.fontSize, required this.lineSpacing, required this.colorScheme, required this.focusNotifier});
+
+  @override
+  State<_LineItem> createState() => _LineItemState();
+}
+
+class _LineItemState extends State<_LineItem> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  // Scale: inactive lines are ~88 % the size of the focused line.
+  late Animation<double> _scale;
+  // Slight upward slide as the line snaps into focus — easeOutBack overshoots
+  // and bounces back, giving the "snappy pop" without feeling heavy.
+  late Animation<double> _slideY;
+  // Opacity is driven by the same controller so everything moves together.
+  late Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+    _scale = Tween<double>(begin: 0.875, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+    _slideY = Tween<double>(begin: 10.0, end: 0.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+    _opacity = Tween<double>(begin: 0.38, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
+      ),
+    );
+    // Start immediately at the correct position without animating on first build.
+    if (widget.isActive) _ctrl.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(_LineItem old) {
+    super.didUpdateWidget(old);
+    if (widget.isActive && !old.isActive) {
+      // Start the bounce from whatever scroll proximity the line already has so
+      // the animation feels like a natural continuation of the scroll gesture.
+      _ctrl.forward(from: widget.focusNotifier.value);
+    } else if (!widget.isActive && old.isActive) {
+      // Stop the controller — scroll-driven rendering takes over immediately.
+      _ctrl
+        ..stop()
+        ..value = 0.0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    // The spotlight frame handles all active-line decoration — _LineItem just
-    // controls the text colour/weight so lines are readable when dimmed.
+    // Build the lyric widget once; only the transforms are recomputed per tick.
+    final lineWidget = ChordLyricLine(
+      line: widget.line,
+      lyricStyle: TextStyle(color: Colors.white, fontSize: widget.fontSize, height: widget.lineSpacing, fontWeight: widget.isActive ? FontWeight.w600 : FontWeight.w400),
+      chordStyle: TextStyle(
+        color: widget.colorScheme.primary.withValues(alpha: widget.isActive ? 1.0 : 0.7),
+        fontSize: widget.fontSize * 0.60,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.5,
+        height: 1.1,
+      ),
+      displayMode: ChordDisplayMode.stacked,
+      activeChordIndex: widget.activeChordIndex,
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 200),
-        opacity: isActive ? 1.0 : 0.38,
-        child: ChordLyricLine(
-          line: line,
-          lyricStyle: TextStyle(color: Colors.white, fontSize: fontSize, height: lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400),
-          chordStyle: TextStyle(
-            color: colorScheme.primary.withValues(alpha: isActive ? 1.0 : 0.7),
-            fontSize: fontSize * 0.60,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-            height: 1.1,
-          ),
-          displayMode: ChordDisplayMode.stacked,
-          activeChordIndex: activeChordIndex,
-        ),
+      child: ValueListenableBuilder<double>(
+        valueListenable: widget.focusNotifier,
+        builder: (context, scrollProg, _) {
+          return AnimatedBuilder(
+            animation: _ctrl,
+            child: lineWidget,
+            builder: (context, child) {
+              final double scale;
+              final double slideY;
+              final double opacity;
+
+              if (widget.isActive) {
+                // Bounce animation takes control — easeOutBack gives the snap.
+                scale = _scale.value;
+                slideY = _slideY.value;
+                opacity = _opacity.value;
+              } else {
+                // Inactive lines track scroll proximity smoothly — no bounce,
+                // just a soft grow/fade as the line drifts through the spotlight.
+                scale = 0.875 + 0.125 * scrollProg;
+                slideY = 0.0;
+                opacity = 0.38 + 0.62 * scrollProg;
+              }
+
+              return Transform.translate(
+                offset: Offset(0, slideY),
+                child: Transform.scale(
+                  scale: scale,
+                  alignment: Alignment.center,
+                  child: Opacity(opacity: opacity, child: child),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

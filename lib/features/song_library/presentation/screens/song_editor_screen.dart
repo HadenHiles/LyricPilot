@@ -124,6 +124,7 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
   late final TextEditingController _notesCtrl;
   final List<_EditableSection> _sections = [];
   bool _saving = false;
+  bool _isDraggingSection = false;
 
   bool get _isEditing => widget.songId != null;
 
@@ -174,6 +175,28 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
     _sections[i].dispose();
     _sections.removeAt(i);
   });
+
+  void _reorderSection(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) newIndex--;
+      final section = _sections.removeAt(oldIndex);
+      _sections.insert(newIndex, section);
+    });
+  }
+
+  void _duplicateSection(int i) {
+    setState(() {
+      final src = _sections[i];
+      int seq = 0;
+      final copy = _EditableSection(
+        id: _newId(),
+        name: src.nameCtrl.text.trim().isEmpty ? '' : '${src.nameCtrl.text.trim()} (copy)',
+        type: src.type,
+        lines: src.lines.map((l) => _EditableLine(id: 'line_${DateTime.now().microsecondsSinceEpoch}_${seq++}', lyric: l.lyricCtrl.text, chords: Map.from(l.chordByWordIndex))).toList(),
+      );
+      _sections.insert(i + 1, copy);
+    });
+  }
 
   void _importParsed(List<ParsedSection> parsed) {
     for (final s in _sections) {
@@ -274,6 +297,20 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
     );
   }
 
+  Widget _buildSectionProxy(Widget child, int index, Animation<double> animation) {
+    if (index >= _sections.length) return child;
+    final section = _sections[index];
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) => Material(
+        elevation: 8 * animation.value,
+        shadowColor: Colors.black38,
+        borderRadius: BorderRadius.circular(8),
+        child: _SectionDragProxy(section: section),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
@@ -301,6 +338,7 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? 'Edit Song' : 'New Song'),
@@ -317,27 +355,61 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       ),
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _MetadataCard(titleCtrl: _titleCtrl, artistCtrl: _artistCtrl, keyCtrl: _keyCtrl, bpmCtrl: _bpmCtrl, notesCtrl: _notesCtrl),
-            ),
-            const SizedBox(height: 16),
-            ...List.generate(_sections.length, (i) => _SectionEditor(key: ValueKey(_sections[i].id), section: _sections[i], onRemove: () => _removeSection(i))),
-            if (_sections.isEmpty) _buildEmptyState(context),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: OutlinedButton.icon(
-                onPressed: _addSection,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add Section'),
-                style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 44)),
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _MetadataCard(titleCtrl: _titleCtrl, artistCtrl: _artistCtrl, keyCtrl: _keyCtrl, bpmCtrl: _bpmCtrl, notesCtrl: _notesCtrl),
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
-            const SizedBox(height: 80),
+            if (_sections.isEmpty) SliverToBoxAdapter(child: _buildEmptyState(context)),
+            SliverReorderableList(
+              itemCount: _sections.length,
+              onReorder: _reorderSection,
+              onReorderStart: (_) => setState(() => _isDraggingSection = true),
+              onReorderEnd: (_) => setState(() => _isDraggingSection = false),
+              proxyDecorator: _buildSectionProxy,
+              itemBuilder: (ctx, i) {
+                final section = _sections[i];
+                return _SectionEditor(
+                  key: ValueKey(section.id),
+                  section: section,
+                  isOuterDragging: _isDraggingSection,
+                  dragHandle: ReorderableDragStartListener(
+                    index: i,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(Icons.drag_handle_rounded, size: 20, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
+                    ),
+                  ),
+                  onRemove: () => _removeSection(i),
+                  onDuplicate: () => _duplicateSection(i),
+                );
+              },
+            ),
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: OutlinedButton.icon(
+                      onPressed: _addSection,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Add Section'),
+                      style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 44)),
+                    ),
+                  ),
+                  const SizedBox(height: 80),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -427,9 +499,12 @@ class _MetadataCard extends StatelessWidget {
 
 class _SectionEditor extends StatefulWidget {
   final _EditableSection section;
+  final Widget dragHandle;
   final VoidCallback onRemove;
+  final VoidCallback onDuplicate;
+  final bool isOuterDragging;
 
-  const _SectionEditor({super.key, required this.section, required this.onRemove});
+  const _SectionEditor({super.key, required this.section, required this.dragHandle, required this.onRemove, required this.onDuplicate, this.isOuterDragging = false});
 
   @override
   State<_SectionEditor> createState() => _SectionEditorState();
@@ -438,6 +513,8 @@ class _SectionEditor extends StatefulWidget {
 class _SectionEditorState extends State<_SectionEditor> {
   int _lineSeq = 0;
   bool _typePickerExpanded = false;
+  bool _collapsed = false;
+  bool _isDraggingLine = false;
 
   String _newLineId() => 'line_${DateTime.now().microsecondsSinceEpoch}_${_lineSeq++}';
 
@@ -458,6 +535,22 @@ class _SectionEditorState extends State<_SectionEditor> {
     setState(() {
       widget.section.lines[li].dispose();
       widget.section.lines.removeAt(li);
+    });
+  }
+
+  void _reorderLine(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) newIndex--;
+      final line = widget.section.lines.removeAt(oldIndex);
+      widget.section.lines.insert(newIndex, line);
+    });
+  }
+
+  void _duplicateLine(int li) {
+    setState(() {
+      final src = widget.section.lines[li];
+      final copy = _EditableLine(id: _newLineId(), lyric: src.lyricCtrl.text, chords: Map.from(src.chordByWordIndex));
+      widget.section.lines.insert(li + 1, copy);
     });
   }
 
@@ -486,21 +579,36 @@ class _SectionEditorState extends State<_SectionEditor> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final section = widget.section;
+    final isCollapsed = _collapsed || widget.isOuterDragging;
 
     return Container(
       color: _sectionTint(section.type, cs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Hairline separates adjacent sections
           Container(height: 1, color: cs.outlineVariant.withValues(alpha: 0.2)),
 
           // ── Section header strip ──────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 6, 4),
+            padding: const EdgeInsets.fromLTRB(4, 8, 6, 4),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Drag handle
+                widget.dragHandle,
+                // Collapse chevron
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _collapsed = !_collapsed;
+                    if (_collapsed) _typePickerExpanded = false;
+                  }),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(isCollapsed ? Icons.chevron_right_rounded : Icons.expand_more_rounded, size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                  ),
+                ),
                 // Tappable type label — expands type picker
                 GestureDetector(
                   onTap: () => setState(() => _typePickerExpanded = !_typePickerExpanded),
@@ -531,39 +639,72 @@ class _SectionEditorState extends State<_SectionEditor> {
                     ),
                   ),
                 ),
+                if (isCollapsed)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Text('${section.lines.length} line${section.lines.length == 1 ? '' : 's'}', style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.45))),
+                  ),
+                IconButton(icon: const Icon(Icons.content_copy_rounded, size: 16), color: cs.onSurfaceVariant.withValues(alpha: 0.55), padding: const EdgeInsets.all(8), tooltip: 'Duplicate section', onPressed: widget.onDuplicate),
                 IconButton(icon: const Icon(Icons.delete_outline, size: 18), color: cs.error.withValues(alpha: 0.55), padding: const EdgeInsets.all(8), tooltip: 'Remove section', onPressed: widget.onRemove),
               ],
             ),
           ),
 
-          // Collapsible type picker
-          if (_typePickerExpanded)
+          if (!isCollapsed) ...[
+            // Collapsible type picker
+            if (_typePickerExpanded)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                child: _SectionTypePicker(
+                  value: section.type,
+                  onChanged: (t) => setState(() {
+                    section.type = t;
+                    _typePickerExpanded = false;
+                  }),
+                ),
+              ),
+
+            const SizedBox(height: 4),
+
+            // ── Lines ──────────────────────────────────────
+            ReorderableListView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              onReorder: _reorderLine,
+              onReorderStart: (_) => setState(() => _isDraggingLine = true),
+              onReorderEnd: (_) => setState(() => _isDraggingLine = false),
+              children: section.lines.asMap().entries.map((e) {
+                final idx = e.key;
+                return _LyricsFirstLineWidget(
+                  key: ValueKey(e.value.id),
+                  line: e.value,
+                  compact: _isDraggingLine,
+                  onRemove: () => _removeLine(idx),
+                  onAddLineBelow: () => _addLineAfter(idx),
+                  onDuplicate: () => _duplicateLine(idx),
+                  dragHandle: ReorderableDragStartListener(
+                    index: idx,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(Icons.drag_handle_rounded, size: 16, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+
+            // Add-line button
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-              child: _SectionTypePicker(
-                value: section.type,
-                onChanged: (t) => setState(() {
-                  section.type = t;
-                  _typePickerExpanded = false;
-                }),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: TextButton.icon(
+                onPressed: _addLineAtEnd,
+                icon: const Icon(Icons.add, size: 15),
+                label: const Text('Add Line'),
+                style: TextButton.styleFrom(foregroundColor: cs.onSurfaceVariant.withValues(alpha: 0.55), textStyle: const TextStyle(fontSize: 13), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
               ),
             ),
-
-          const SizedBox(height: 4),
-
-          // ── Lines ──────────────────────────────────────
-          ...section.lines.asMap().entries.map((e) => _LyricsFirstLineWidget(key: ValueKey(e.value.id), line: e.value, onRemove: () => _removeLine(e.key), onAddLineBelow: () => _addLineAfter(e.key))),
-
-          // Add-line button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: TextButton.icon(
-              onPressed: _addLineAtEnd,
-              icon: const Icon(Icons.add, size: 15),
-              label: const Text('Add Line'),
-              style: TextButton.styleFrom(foregroundColor: cs.onSurfaceVariant.withValues(alpha: 0.55), textStyle: const TextStyle(fontSize: 13), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -618,8 +759,11 @@ class _LyricsFirstLineWidget extends StatefulWidget {
   final _EditableLine line;
   final VoidCallback onRemove;
   final VoidCallback onAddLineBelow;
+  final VoidCallback onDuplicate;
+  final Widget dragHandle;
+  final bool compact;
 
-  const _LyricsFirstLineWidget({super.key, required this.line, required this.onRemove, required this.onAddLineBelow});
+  const _LyricsFirstLineWidget({super.key, required this.line, required this.onRemove, required this.onAddLineBelow, required this.onDuplicate, required this.dragHandle, this.compact = false});
 
   @override
   State<_LyricsFirstLineWidget> createState() => _LyricsFirstLineWidgetState();
@@ -698,14 +842,36 @@ class _LyricsFirstLineWidgetState extends State<_LyricsFirstLineWidget> {
     final lyric = widget.line.lyricCtrl.text;
     final words = _splitWords(lyric);
 
+    if (widget.compact) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(4, 2, 6, 2),
+        child: Row(
+          children: [
+            widget.dragHandle,
+            Expanded(
+              child: Text(
+                lyric.isEmpty ? '—' : lyric,
+                style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
+      padding: const EdgeInsets.fromLTRB(4, 4, 6, 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          widget.dragHandle,
           Expanded(
             child: _editingLyric ? _buildEditField(theme, cs) : GestureDetector(onTap: _startLyricEdit, behavior: HitTestBehavior.opaque, child: _buildChordLyricView(theme, cs, lyric, words)),
           ),
+          // Duplicate-line button
+          IconButton(icon: const Icon(Icons.content_copy_rounded, size: 14), color: cs.onSurfaceVariant.withValues(alpha: 0.3), padding: const EdgeInsets.all(8), tooltip: 'Duplicate line', onPressed: widget.onDuplicate),
           // Delete-line button
           IconButton(icon: const Icon(Icons.close, size: 16), color: cs.onSurfaceVariant.withValues(alpha: 0.35), padding: const EdgeInsets.all(8), tooltip: 'Remove line', onPressed: widget.onRemove),
         ],
@@ -897,6 +1063,73 @@ class _ChordPickerDialogState extends State<_ChordPickerDialog> {
 }
 
 // ─────────────────────────────────────────────────────────
+// Section drag proxy — compact card shown while dragging a section
+// ─────────────────────────────────────────────────────────
+
+class _SectionDragProxy extends StatelessWidget {
+  final _EditableSection section;
+
+  const _SectionDragProxy({required this.section});
+
+  Color _tint(SectionType type, ColorScheme cs) {
+    switch (type) {
+      case SectionType.chorus:
+        return cs.primaryContainer.withValues(alpha: 0.55);
+      case SectionType.verse:
+        return cs.secondaryContainer.withValues(alpha: 0.55);
+      case SectionType.bridge:
+        return cs.tertiaryContainer.withValues(alpha: 0.55);
+      case SectionType.preChorus:
+        return cs.secondaryContainer.withValues(alpha: 0.4);
+      case SectionType.intro:
+      case SectionType.outro:
+        return cs.primaryContainer.withValues(alpha: 0.4);
+      default:
+        return cs.surfaceContainerHighest.withValues(alpha: 0.55);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final name = section.nameCtrl.text.trim().isEmpty ? section.type.displayName : section.nameCtrl.text.trim();
+    return Container(
+      decoration: BoxDecoration(
+        color: _tint(section.type, cs),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Row(
+        children: [
+          Icon(Icons.drag_handle_rounded, size: 20, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: cs.primaryContainer.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(5)),
+            child: Text(
+              section.type.displayName.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w700, letterSpacing: 1.2, fontSize: 10),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              name,
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text('${section.lines.length} line${section.lines.length == 1 ? '' : 's'}', style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.55))),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────
 // Paste full-song sheet
 // ─────────────────────────────────────────────────────────
 
@@ -976,7 +1209,8 @@ class _PasteLyricsSheetState extends State<_PasteLyricsSheet> {
                         if (_preview != null) setState(() => _preview = null);
                       },
                       decoration: InputDecoration(
-                        hintText: 'Paste your song here…\n\nLabels like [Verse 1], Chorus:, or BRIDGE are detected automatically. Without labels, repeated blocks are identified as the chorus.\n\nChords are imported automatically — stacked lines (chord line above lyric line) or inline notation like [G]word are both supported.',
+                        hintText:
+                            'Paste your song here…\n\nLabels like [Verse 1], Chorus:, or BRIDGE are detected automatically. Repeated sections are smart-detected — if a section header appears again with no body, or a body just says "Chorus" / "see verse", the original lyrics are reused automatically.\n\nWithout labels, repeated blocks are identified as the chorus.\n\nChords are imported automatically — stacked lines (chord line above lyric line) or inline notation like [G]word are both supported.',
                         hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.4), fontSize: 13),
                         hintMaxLines: 6,
                         filled: true,

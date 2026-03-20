@@ -20,6 +20,9 @@ _$SongImpl _$$SongImplFromJson(Map<String, dynamic> json) => _$SongImpl(
       const [],
   createdAt: DateTime.parse(json['createdAt'] as String),
   updatedAt: DateTime.parse(json['updatedAt'] as String),
+  pinnedAt: json['pinnedAt'] == null
+      ? null
+      : DateTime.parse(json['pinnedAt'] as String),
 );
 
 Map<String, dynamic> _$$SongImplToJson(_$SongImpl instance) =>
@@ -33,4 +36,5 @@ Map<String, dynamic> _$$SongImplToJson(_$SongImpl instance) =>
       'sections': instance.sections,
       'createdAt': instance.createdAt.toIso8601String(),
       'updatedAt': instance.updatedAt.toIso8601String(),
+      'pinnedAt': instance.pinnedAt?.toIso8601String(),
     };

@@ -12,7 +12,7 @@ part 'song.g.dart';
 class Song with _$Song {
   const Song._();
 
-  const factory Song({required String id, required String title, required String artist, String? key, int? bpm, String? notes, @Default([]) List<SongSection> sections, required DateTime createdAt, required DateTime updatedAt}) = _Song;
+  const factory Song({required String id, required String title, required String artist, String? key, int? bpm, String? notes, @Default([]) List<SongSection> sections, required DateTime createdAt, required DateTime updatedAt, @Default(null) DateTime? pinnedAt}) = _Song;
 
   factory Song.fromJson(Map<String, dynamic> json) => _$SongFromJson(json);
 
