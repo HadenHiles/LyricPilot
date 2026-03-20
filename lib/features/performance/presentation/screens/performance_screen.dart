@@ -121,7 +121,13 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _onContentTap,
-            child: _ContentLayer(song: song, state: perfState),
+            child: _ContentLayer(
+              song: song,
+              state: perfState,
+              onScrollActivated: (si, li) {
+                ref.read(performanceNotifierProvider(widget.songId).notifier).jumpToLine(si, li);
+              },
+            ),
           ),
 
           // ── Controls overlay — pointer-transparent when hidden ─────────────
@@ -156,7 +162,11 @@ class _ContentLayer extends StatefulWidget {
   final Song song;
   final PerformanceState state;
 
-  const _ContentLayer({required this.song, required this.state});
+  /// Called when the user scrolls and the nearest line to screen centre
+  /// changes.  The parent uses this to update the active line in the notifier.
+  final void Function(int si, int li)? onScrollActivated;
+
+  const _ContentLayer({required this.song, required this.state, this.onScrollActivated});
 
   @override
   State<_ContentLayer> createState() => _ContentLayerState();
@@ -169,6 +179,11 @@ class _ContentLayerState extends State<_ContentLayer> {
   // Scrollable.ensureVisible can animate to it when the active line changes.
   final _lineKeys = <(int, int), GlobalKey>{};
 
+  // True while a programmatic scroll animation is in flight so that the
+  // ScrollEndNotification from that animation does not trigger scroll-activation
+  // and fight with the engine.
+  bool _suppressScrollActivation = false;
+
   GlobalKey _keyFor(int si, int li) => _lineKeys.putIfAbsent((si, li), GlobalKey.new);
 
   @override
@@ -180,13 +195,49 @@ class _ContentLayerState extends State<_ContentLayer> {
   }
 
   void _scrollToActive() {
+    _suppressScrollActivation = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final ctx = _keyFor(widget.state.sectionIndex, widget.state.lineIndex).currentContext;
       if (ctx != null) {
         Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 400), curve: Curves.easeInOutCubic, alignment: 0.25);
       }
+      // Reset after animation + small buffer.
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _suppressScrollActivation = false;
+      });
     });
+  }
+
+  /// Called by the ScrollEndNotification listener when the user's scroll
+  /// settles.  Finds the line whose vertical centre is closest to the middle
+  /// of the screen and notifies the parent.
+  void _activateNearestLine() {
+    if (!mounted || widget.onScrollActivated == null) return;
+    final screenCenterY = MediaQuery.of(context).size.height / 2;
+
+    double bestDist = double.infinity;
+    int bestSi = 0;
+    int bestLi = 0;
+    bool found = false;
+
+    for (final entry in _lineKeys.entries) {
+      final ctx = entry.value.currentContext;
+      if (ctx == null) continue;
+      final rb = ctx.findRenderObject() as RenderBox?;
+      if (rb == null || !rb.attached) continue;
+      final pos = rb.localToGlobal(Offset.zero);
+      final lineCenterY = pos.dy + rb.size.height / 2;
+      final dist = (lineCenterY - screenCenterY).abs();
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestSi = entry.key.$1;
+        bestLi = entry.key.$2;
+        found = true;
+      }
+    }
+
+    if (found) widget.onScrollActivated!(bestSi, bestLi);
   }
 
   @override
@@ -221,10 +272,16 @@ class _ContentLayerState extends State<_ContentLayer> {
     items.add(const SizedBox(height: 120));
 
     return SafeArea(
-      child: SingleChildScrollView(
-        controller: _scrollCtrl,
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: items),
+      child: NotificationListener<ScrollEndNotification>(
+        onNotification: (notification) {
+          if (!_suppressScrollActivation) _activateNearestLine();
+          return false;
+        },
+        child: SingleChildScrollView(
+          controller: _scrollCtrl,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: items),
+        ),
       ),
     );
   }
@@ -399,15 +456,8 @@ class _ControlsLayer extends StatelessWidget {
                     child: Container(
                       width: 72,
                       height: 72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: cs.primary,
-                      ),
-                      child: Icon(
-                        state.playback.isAdvancing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                        color: Colors.black87,
-                        size: 42,
-                      ),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary),
+                      child: Icon(state.playback.isAdvancing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.black87, size: 42),
                     ),
                   ),
                   const SizedBox(width: 28),

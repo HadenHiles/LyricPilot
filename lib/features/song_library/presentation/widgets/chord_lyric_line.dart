@@ -87,6 +87,25 @@ class ChordLyricLine extends StatelessWidget {
 }
 
 /// Stacked chord + lyric layout using [TextPainter] for horizontal alignment.
+// Splits [lyric] into (word, charStartPosition) entries.
+List<({String word, int position})> _splitLyricWords(String lyric) {
+  final result = <({String word, int position})>[];
+  for (final m in RegExp(r'\S+').allMatches(lyric)) {
+    result.add((word: m.group(0)!, position: m.start));
+  }
+  return result;
+}
+
+/// Stacked chord + lyric layout using a [Wrap] of per-word chord-slot columns.
+///
+/// Each word is wrapped with an optional chord name above it in a fixed-size
+/// slot.  Words without chords render an invisible placeholder slot of the
+/// same size, guaranteeing that every word sits on the same baseline regardless
+/// of whether it carries a chord.
+///
+/// This approach is font-size and wrap-safe: unlike the previous TextPainter
+/// offset method, chords remain directly above their word even when the lyric
+/// exceeds one visible line at large font sizes.
 class _StackedLine extends StatelessWidget {
   final SongLine line;
   final TextStyle lyricStyle;
@@ -95,65 +114,59 @@ class _StackedLine extends StatelessWidget {
 
   const _StackedLine({required this.line, required this.lyricStyle, required this.chordStyle, this.activeChordIndex = -1});
 
-  /// Returns the pixel width of [text] up to [position] using [style].
-  double _measureOffset(String text, int position, TextStyle style, double maxWidth) {
-    final tp = TextPainter(
-      text: TextSpan(text: text.substring(0, position.clamp(0, text.length)), style: style),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: maxWidth);
-    return tp.width;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final lyric = line.lyric;
+    final words = _splitLyricWords(line.lyric);
+    if (words.isEmpty) return Text(line.lyric, style: lyricStyle);
+
     final sortedChords = [...line.chords]..sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final chordHeightPainter = TextPainter(
-          text: TextSpan(text: 'A', style: chordStyle),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        final chordRowHeight = chordHeightPainter.height + 4;
+    // Map each chord (by sorted index) to the nearest word index.
+    // When two chords land on the same word, the later one overrides.
+    final chordAtWord = <int, ({String symbol, int chordIdx})>{};
+    for (int ci = 0; ci < sortedChords.length; ci++) {
+      final pos = sortedChords[ci].position ?? 0;
+      int closest = 0;
+      int minDist = (words[0].position - pos).abs();
+      for (int wi = 1; wi < words.length; wi++) {
+        final d = (words[wi].position - pos).abs();
+        if (d < minDist) {
+          minDist = d;
+          closest = wi;
+        }
+      }
+      chordAtWord[closest] = (symbol: sortedChords[ci].chord, chordIdx: ci);
+    }
+
+    return Wrap(
+      spacing: 4,
+      runSpacing: 8,
+      children: words.asMap().entries.map((e) {
+        final wi = e.key;
+        final word = e.value.word;
+        final entry = chordAtWord[wi];
+        final hasChord = entry != null;
+        final isActive = hasChord && entry.chordIdx == activeChordIndex;
 
         return Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              height: chordRowHeight,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: List.generate(sortedChords.length, (i) {
-                  final chord = sortedChords[i];
-                  final pos = chord.position ?? 0;
-                  final left = _measureOffset(lyric, pos, lyricStyle, constraints.maxWidth);
-                  if (i == activeChordIndex) {
-                    // Active chord: translucent pill shows what is being played.
-                    // Translate to compensate for padding so text stays aligned.
-                    return Positioned(
-                      left: left,
-                      child: Transform.translate(
-                        offset: const Offset(-5, -2),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                          decoration: BoxDecoration(color: (chordStyle.color ?? Colors.white).withValues(alpha: 0.22), borderRadius: BorderRadius.circular(5)),
-                          child: Text(chord.chord, style: chordStyle),
-                        ),
-                      ),
-                    );
-                  }
-                  return Positioned(
-                    left: left,
-                    child: Text(chord.chord, style: chordStyle),
-                  );
-                }),
+            // Always render a chord container of identical size so all words
+            // share the same vertical offset to the lyric baseline.
+            Opacity(
+              opacity: hasChord ? 1.0 : 0.0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                margin: const EdgeInsets.only(bottom: 2),
+                decoration: isActive ? BoxDecoration(color: (chordStyle.color ?? Colors.white).withValues(alpha: 0.22), borderRadius: BorderRadius.circular(5)) : null,
+                child: Text(hasChord ? entry.symbol : 'A', style: chordStyle),
               ),
             ),
-            Text(lyric, style: lyricStyle),
+            Text(word, style: lyricStyle),
           ],
         );
-      },
+      }).toList(),
     );
   }
 }

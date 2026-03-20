@@ -222,6 +222,18 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     _engine?.manualJumpTo(target);
   }
 
+  /// Jump to an arbitrary section + line (e.g. from scroll-to-activate).
+  void jumpToLine(int si, int li) {
+    final song = _song;
+    if (song == null || song.sections.isEmpty) return;
+    final safeSi = si.clamp(0, song.sections.length - 1);
+    final safeSection = song.sections[safeSi];
+    final safeLi = li.clamp(0, (safeSection.lines.length - 1).clamp(0, safeSection.lines.length));
+    final target = ProgressState(sectionIndex: safeSi, lineIndex: safeLi);
+    state = state.copyWith(sectionIndex: safeSi, lineIndex: safeLi, chordIndex: 0);
+    _engine?.manualJumpTo(target);
+  }
+
   // ── Repeat mode ────────────────────────────────────────────────────────────
 
   void cycleRepeatMode() {
