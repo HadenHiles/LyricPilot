@@ -1,4 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../song_library/domain/models/song.dart';
 import '../../../song_library/presentation/providers/song_library_provider.dart';
@@ -18,15 +19,43 @@ part 'performance_provider.g.dart';
 @riverpod
 class PerformanceNotifier extends _$PerformanceNotifier {
   ScrollEngine? _engine;
+  bool _disposed = false;
+
+  static const _kFontSize = 'perf_font_size';
+  static const _kLineSpacing = 'perf_line_spacing';
+  static const _kTempo = 'perf_tempo';
 
   @override
   PerformanceState build(String songId) {
-    // Dispose engine when the provider is rebuilt or destroyed.
+    _disposed = false;
     ref.onDispose(() {
+      _disposed = true;
       _engine?.dispose();
       _engine = null;
     });
+    _loadDisplayPrefs();
     return const PerformanceState();
+  }
+
+  Future<void> _loadDisplayPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_disposed) return;
+    final fontSize = (prefs.getDouble(_kFontSize) ?? PerformanceState.defaultFontSize).clamp(PerformanceState.minFontSize, PerformanceState.maxFontSize);
+    final lineSpacing = (prefs.getDouble(_kLineSpacing) ?? PerformanceState.defaultLineSpacing).clamp(PerformanceState.minLineSpacing, PerformanceState.maxLineSpacing);
+    final tempo = (prefs.getDouble(_kTempo) ?? 1.0).clamp(PlaybackState.minMultiplier, PlaybackState.maxMultiplier);
+    state = state.copyWith(
+      fontSize: fontSize,
+      lineSpacing: lineSpacing,
+      playback: state.playback.copyWith(tempoMultiplier: tempo),
+    );
+  }
+
+  Future<void> _saveDisplayPrefs() async {
+    final s = state;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kFontSize, s.fontSize);
+    await prefs.setDouble(_kLineSpacing, s.lineSpacing);
+    await prefs.setDouble(_kTempo, s.playback.tempoMultiplier);
   }
 
   // ── Engine helpers ─────────────────────────────────────────────────────────
@@ -245,12 +274,27 @@ class PerformanceNotifier extends _$PerformanceNotifier {
 
   void setFontSize(double size) {
     state = state.copyWith(fontSize: size.clamp(PerformanceState.minFontSize, PerformanceState.maxFontSize));
+    _saveDisplayPrefs();
   }
 
   void adjustFontSize(double delta) => setFontSize(state.fontSize + delta);
 
   void setLineSpacing(double spacing) {
     state = state.copyWith(lineSpacing: spacing.clamp(PerformanceState.minLineSpacing, PerformanceState.maxLineSpacing));
+    _saveDisplayPrefs();
+  }
+
+  void setTempoMultiplier(double multiplier) {
+    final next = state.playback.copyWith(tempoMultiplier: multiplier.clamp(PlaybackState.minMultiplier, PlaybackState.maxMultiplier));
+    state = state.copyWith(playback: next);
+    _engine?.updatePlaybackState(next);
+    _saveDisplayPrefs();
+  }
+
+  // ── Full-screen toggle ────────────────────────────────────────────────────
+
+  void toggleFullScreen() {
+    state = state.copyWith(isFullScreen: !state.isFullScreen);
   }
 
   // ── Controls visibility ────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import '../../../song_library/domain/models/song_section.dart';
 import '../../../song_library/presentation/providers/song_library_provider.dart';
 import '../../../song_library/presentation/widgets/chord_lyric_line.dart';
 import '../../domain/performance_state.dart';
+import '../../domain/playback_state.dart';
 import '../providers/performance_provider.dart';
 
 /// Full-screen performance view — Phase 3 + 4.
@@ -32,16 +33,15 @@ class PerformanceScreen extends ConsumerStatefulWidget {
 
 class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
   Timer? _hideTimer;
-  // True until the player first interacts — shows the welcome overlay and
-  // keeps controls visible for 10 s on entry instead of 4 s.
+  // True until the player first interacts in full-screen mode.
   bool _showWelcome = true;
 
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _scheduleHide();
+    // Default to edge-to-edge; ref.listen in build() reacts to fullscreen changes.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   @override
@@ -52,7 +52,9 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
     super.dispose();
   }
 
-  /// Restart the auto-hide countdown: 10 s on first entry, 4 s thereafter.
+  bool get _isFullScreen => ref.read(performanceNotifierProvider(widget.songId)).isFullScreen;
+
+  /// Restart the auto-hide countdown (full-screen only): 10 s on entry, 4 s thereafter.
   void _scheduleHide() {
     _hideTimer?.cancel();
     _hideTimer = Timer(Duration(seconds: _showWelcome ? 10 : 4), () {
@@ -67,8 +69,9 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
     if (_showWelcome) setState(() => _showWelcome = false);
   }
 
-  /// Tap on the content area: toggle controls visibility.
+  /// Tap on the content area: toggle controls visibility (full-screen only).
   void _onContentTap() {
+    if (!_isFullScreen) return;
     _onFirstInteraction();
     final notifier = ref.read(performanceNotifierProvider(widget.songId).notifier);
     final visible = ref.read(performanceNotifierProvider(widget.songId)).controlsVisible;
@@ -81,15 +84,16 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
     }
   }
 
-  /// Called by any control button interaction — surfaces controls + resets timer.
+  /// Called by control button interactions — surfaces controls + resets timer.
+  /// No-op in normal (non-fullscreen) mode.
   void _onControlInteraction() {
+    if (!_isFullScreen) return;
     _onFirstInteraction();
     ref.read(performanceNotifierProvider(widget.songId).notifier).showControls();
     _scheduleHide();
   }
 
   void _openSettings() {
-    _onControlInteraction();
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: const Color(0xFF1C1B1F),
@@ -104,6 +108,18 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
     final perfState = ref.watch(performanceNotifierProvider(widget.songId));
     final notifier = ref.read(performanceNotifierProvider(widget.songId).notifier);
 
+    // React to fullscreen toggle — update system UI and (de)activate hide timer.
+    ref.listen<bool>(performanceNotifierProvider(widget.songId).select((s) => s.isFullScreen), (prev, next) {
+      if (next) {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        setState(() => _showWelcome = true);
+        _scheduleHide();
+      } else {
+        _hideTimer?.cancel();
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
+    });
+
     if (song == null) {
       return const Scaffold(
         backgroundColor: Colors.black,
@@ -113,11 +129,82 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
       );
     }
 
+    if (perfState.isFullScreen) {
+      return _buildFullScreenLayout(context, song, perfState, notifier);
+    }
+    return _buildNormalLayout(context, song, perfState, notifier);
+  }
+
+  // ── Normal (non-immersive) layout ──────────────────────────────────────────
+
+  Widget _buildNormalLayout(BuildContext context, Song song, PerformanceState perfState, PerformanceNotifier notifier) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0D0D0D),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: Colors.white70),
+          tooltip: 'Exit performance mode',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              song.title,
+              style: const TextStyle(color: Color(0xDEFFFFFF), fontSize: 15, fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (song.artist.isNotEmpty)
+              Text(
+                song.artist,
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: Colors.white54),
+            tooltip: 'Edit song',
+            onPressed: () => context.push('/song/${widget.songId}/edit'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.tune_rounded, color: Colors.white54),
+            tooltip: 'Performance settings',
+            onPressed: _openSettings,
+          ),
+          IconButton(
+            icon: const Icon(Icons.fullscreen_rounded, color: Colors.white54),
+            tooltip: 'Full screen',
+            onPressed: () => notifier.toggleFullScreen(),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _SongDetailsHeader(song: song),
+          Expanded(
+            child: _ContentLayer(song: song, state: perfState, onScrollActivated: (si, li) => ref.read(performanceNotifierProvider(widget.songId).notifier).jumpToLine(si, li)),
+          ),
+        ],
+      ),
+      bottomNavigationBar: _FooterBar(state: perfState, notifier: notifier, onInteraction: () {}),
+    );
+  }
+
+  // ── Full-screen (immersive) layout ─────────────────────────────────────────
+
+  Widget _buildFullScreenLayout(BuildContext context, Song song, PerformanceState perfState, PerformanceNotifier notifier) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ── Content area — tap toggles controls ───────────────────────────
+          // ── Content area — tap toggles controls ─────────────────────────
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -132,19 +219,19 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
             ),
           ),
 
-          // ── Controls overlay (header only) — pointer-transparent when hidden
+          // ── Controls overlay — pointer-transparent when hidden ──────────
           Positioned.fill(
             child: IgnorePointer(
               ignoring: !perfState.controlsVisible,
               child: AnimatedOpacity(
                 opacity: perfState.controlsVisible ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 300),
-                child: _ControlsLayer(song: song, state: perfState, notifier: notifier, onInteraction: _onControlInteraction, onClose: () => Navigator.of(context).pop(), onSettings: _openSettings, onEdit: () => context.push('/song/${widget.songId}/edit')),
+                child: _ControlsLayer(song: song, state: perfState, notifier: notifier, onInteraction: _onControlInteraction, onClose: () => Navigator.of(context).pop(), onSettings: _openSettings, onEdit: () => context.push('/song/${widget.songId}/edit'), onExitFullScreen: () => notifier.toggleFullScreen()),
               ),
             ),
           ),
 
-          // ── Footer controls — always visible ──────────────────────────────
+          // ── Footer controls — always visible ────────────────────────────
           Positioned(
             bottom: 0,
             left: 0,
@@ -152,8 +239,7 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
             child: _FooterBar(state: perfState, notifier: notifier, onInteraction: _onControlInteraction),
           ),
 
-          // ── Welcome overlay — purely visual; always pointer-transparent so
-          //    taps fall through to the GestureDetector beneath.
+          // ── Welcome overlay — pointer-transparent ───────────────────────
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedOpacity(
@@ -214,7 +300,9 @@ class _ContentLayerState extends State<_ContentLayer> {
   @override
   void didUpdateWidget(_ContentLayer old) {
     super.didUpdateWidget(old);
-    if (old.state.sectionIndex != widget.state.sectionIndex || old.state.lineIndex != widget.state.lineIndex) {
+    final posChanged = old.state.sectionIndex != widget.state.sectionIndex || old.state.lineIndex != widget.state.lineIndex;
+    final displayChanged = old.state.fontSize != widget.state.fontSize || old.state.lineSpacing != widget.state.lineSpacing;
+    if (posChanged || displayChanged) {
       _snapToCenter(widget.state.sectionIndex, widget.state.lineIndex);
     }
   }
@@ -445,7 +533,46 @@ class _LineItem extends StatelessWidget {
     );
   }
 }
+// ─── Song details header (normal mode) ─────────────────────────────────────────────
 
+/// Compact chip row showing key, BPM, and notes.  Hidden when all are absent.
+class _SongDetailsHeader extends StatelessWidget {
+  final Song song;
+  const _SongDetailsHeader({required this.song});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final chips = <Widget>[if (song.key != null) _InfoChip(label: 'Key of ${song.key!}', cs: cs), if (song.bpm != null) _InfoChip(label: '${song.bpm} BPM', cs: cs), if (song.notes != null && song.notes!.isNotEmpty) _InfoChip(label: song.notes!, cs: cs)];
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return Container(
+      color: const Color(0xFF0D0D0D),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Wrap(spacing: 8, runSpacing: 4, children: chips),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final String label;
+  final ColorScheme cs;
+  const _InfoChip({required this.label, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+      child: Text(
+        label,
+        style: TextStyle(color: cs.primary, fontSize: 12, fontWeight: FontWeight.w600),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
 // ─── Controls overlay ─────────────────────────────────────────────────────────
 
 class _ControlsLayer extends StatelessWidget {
@@ -456,8 +583,9 @@ class _ControlsLayer extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onSettings;
   final VoidCallback onEdit;
+  final VoidCallback onExitFullScreen;
 
-  const _ControlsLayer({required this.song, required this.state, required this.notifier, required this.onInteraction, required this.onClose, required this.onSettings, required this.onEdit});
+  const _ControlsLayer({required this.song, required this.state, required this.notifier, required this.onInteraction, required this.onClose, required this.onSettings, required this.onEdit, required this.onExitFullScreen});
 
   static const _overlay = Color(0xD0000000);
 
@@ -509,7 +637,6 @@ class _ControlsLayer extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Edit song
                   IconButton(
                     icon: const Icon(Icons.edit_outlined, color: Colors.white54),
                     tooltip: 'Edit song',
@@ -524,6 +651,14 @@ class _ControlsLayer extends StatelessWidget {
                     onPressed: () {
                       onInteraction();
                       onSettings();
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.fullscreen_exit_rounded, color: Colors.white54),
+                    tooltip: 'Exit full screen',
+                    onPressed: () {
+                      onInteraction();
+                      onExitFullScreen();
                     },
                   ),
                 ],
@@ -726,6 +861,22 @@ class _SettingsSheet extends ConsumerWidget {
             colorScheme: cs,
             onChanged: (v) {
               notifier.setLineSpacing(v);
+              onInteraction();
+            },
+          ),
+          const SizedBox(height: 20),
+
+          // Auto-scroll speed
+          _SettingRow(label: 'Auto-scroll Speed', value: '${state.playback.tempoMultiplier.toStringAsFixed(2)}×', colorScheme: cs),
+          const SizedBox(height: 4),
+          _ThemedSlider(
+            value: state.playback.tempoMultiplier,
+            min: PlaybackState.minMultiplier,
+            max: PlaybackState.maxMultiplier,
+            divisions: 15,
+            colorScheme: cs,
+            onChanged: (v) {
+              notifier.setTempoMultiplier(v);
               onInteraction();
             },
           ),

@@ -17,7 +17,7 @@ enum RepeatMode {
 /// All navigation and display preference are captured here so the view
 /// is a pure function of this value — no local widget state for position.
 class PerformanceState {
-  const PerformanceState({this.sectionIndex = 0, this.lineIndex = 0, this.chordIndex = 0, this.repeatMode = RepeatMode.none, this.fontSize = 28.0, this.lineSpacing = 1.6, this.controlsVisible = true, this.playback = const PlaybackState()});
+  const PerformanceState({this.sectionIndex = 0, this.lineIndex = 0, this.chordIndex = 0, this.repeatMode = RepeatMode.none, this.fontSize = defaultFontSize, this.lineSpacing = defaultLineSpacing, this.controlsVisible = true, this.isFullScreen = false, this.playback = const PlaybackState()});
 
   /// Index of the currently active section in [Song.sections].
   final int sectionIndex;
@@ -40,11 +40,16 @@ class PerformanceState {
   /// Whether the navigation overlay (header + footer controls) is visible.
   final bool controlsVisible;
 
+  /// When true, the performance view hides all chrome and goes immersive.
+  final bool isFullScreen;
+
   /// Playback lifecycle and engine configuration.
   final PlaybackState playback;
 
-  // ── Font / spacing bounds ──────────────────────────────────────────────────
+  // ── Font / spacing defaults and bounds ────────────────────────────────────
 
+  static const double defaultFontSize = 28.0;
+  static const double defaultLineSpacing = 1.6;
   static const double minFontSize = 16.0;
   static const double maxFontSize = 56.0;
   static const double minLineSpacing = 1.2;
@@ -57,7 +62,7 @@ class PerformanceState {
 
   // ── copyWith ───────────────────────────────────────────────────────────────
 
-  PerformanceState copyWith({int? sectionIndex, int? lineIndex, int? chordIndex, RepeatMode? repeatMode, double? fontSize, double? lineSpacing, bool? controlsVisible, PlaybackState? playback}) => PerformanceState(
+  PerformanceState copyWith({int? sectionIndex, int? lineIndex, int? chordIndex, RepeatMode? repeatMode, double? fontSize, double? lineSpacing, bool? controlsVisible, bool? isFullScreen, PlaybackState? playback}) => PerformanceState(
     sectionIndex: sectionIndex ?? this.sectionIndex,
     lineIndex: lineIndex ?? this.lineIndex,
     chordIndex: chordIndex ?? this.chordIndex,
@@ -65,6 +70,7 @@ class PerformanceState {
     fontSize: fontSize ?? this.fontSize,
     lineSpacing: lineSpacing ?? this.lineSpacing,
     controlsVisible: controlsVisible ?? this.controlsVisible,
+    isFullScreen: isFullScreen ?? this.isFullScreen,
     playback: playback ?? this.playback,
   );
 }
