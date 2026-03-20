@@ -1,38 +1,191 @@
 import 'models/section_type.dart';
 
-/// A single parsed section ready to be wired into editor state.
+// ─────────────────────────────────────────────────────────
+// Data types
+// ─────────────────────────────────────────────────────────
+
+/// A single line of a song after parsing: the lyric text plus a map of
+/// character-position → chord symbol for any chords that were detected.
+///
+/// [chordAtCharPos] keys are zero-based character offsets within [lyric].
+/// An empty map means no chords were encoded for this line.
+class ParsedLine {
+  final String lyric;
+  final Map<int, String> chordAtCharPos;
+
+  const ParsedLine({required this.lyric, this.chordAtCharPos = const {}});
+
+  bool get hasChords => chordAtCharPos.isNotEmpty;
+}
+
+/// A parsed section ready to be wired into editor state.
 class ParsedSection {
   final String name;
   final SectionType type;
-
-  /// Raw lyric strings; blank entries represent spacer lines.
-  final List<String> lines;
+  final List<ParsedLine> lines;
 
   const ParsedSection({required this.name, required this.type, required this.lines});
 }
 
-/// Parses raw pasted song text into a structured list of [ParsedSection]s.
+// ─────────────────────────────────────────────────────────
+// LyricParser
+// ─────────────────────────────────────────────────────────
+
+/// Parses raw pasted song text — with or without chords — into structured
+/// [ParsedSection] objects.
 ///
-/// **Labeled mode** — text contains explicit section headers such as
-/// `[Verse 1]`, `Chorus:`, `BRIDGE`, `(Pre-Chorus)`, etc.
-/// Each header starts a new section; lines between headers are lyrics.
+/// **Section detection**
+/// *Labeled mode* — text contains explicit headers like `[Verse 1]`, `Chorus:`,
+/// `BRIDGE`, `(Pre-Chorus)`, `--- Intro ---`.  Each header starts a section.
+/// *Smart mode* — no headers found. Blank-line-separated blocks are compared;
+/// the block appearing ≥ 2 times is promoted to chorus, others become verses.
 ///
-/// **Smart mode** — no recognisable headers present.
-/// Lines are grouped by blank-line separators into blocks.
-/// The block that appears most often (≥ 2 times) is detected as the chorus;
-/// all other blocks are numbered as verses in order.
+/// **Chord formats handled**
+/// 1. *Stacked* — a chord line (all tokens are valid chords) immediately
+///    above a lyric line.  Column offsets are used to anchor each chord to
+///    the correct character position in the lyric.
+/// 2. *Inline brackets* — `[G]Walking down the [Am]road`.  Brackets are
+///    stripped and the chord is anchored to the character that follows.
+/// 3. *ChordPro* — `{chord:G}` or `{G}` inline.  Same treatment as brackets.
+/// 4. *Chord-only lines* (no adjacent lyric) are kept as instrumental lines.
 class LyricParser {
-  // Matches the most common section label formats, case-insensitive.
-  // Examples: [Verse 1]  (Chorus)  CHORUS  Bridge:  --- Intro ---  Pre-Chorus
+  // ── regexes ───────────────────────────────────────────
+
+  /// Matches `[Verse 1]`, `Chorus:`, `BRIDGE`, `(Pre-Chorus)`, etc.
   static final _headerRe = RegExp(
-    r'''^\s*[-–—=*#\[(\s]*'''
+    r'''^\s*[-\u2013\u2014=*#\[(\s]*'''
     r'''(verse|chorus|hook|refrain|bridge|pre[-\s]?chorus|prechorus|'''
     r'''intro|outro|solo|instrumental|interlude|section|breakdown|tag|coda)'''
-    r'''[\s\d]*[)\],:.\s\-–—=*#]*\s*$''',
+    r'''[\s\d]*[)\],:.\.\s\-\u2013\u2014=*#]*\s*$''',
     caseSensitive: false,
   );
 
-  // ── helpers ───────────────────────────────────────────
+  /// Matches a single chord symbol, e.g. G, Am, F#m, Cadd9, D/F#, Bbmaj7.
+  static final _chordRe = RegExp(
+    r'^[A-G][#b\u266f\u266d]?'
+    r'(m(?:aj)?7?|M7?|min|dim|aug|sus[24]?|add)?'
+    r'\d{0,2}'
+    r'(b\d|#\d|sus\d|add\d|maj\d)*'
+    r'(/[A-G][#b]?)?$',
+  );
+
+  /// Inline bracket chord: `[G]`, `[Am7]`, `[F#m]`.
+  static final _inlineBracketRe = RegExp(r'\[([A-G][^\]]{0,8})\]');
+
+  /// ChordPro inline: `{chord:G}`, `{G}`.
+  static final _chordProRe = RegExp(r'\{(?:chord:)?([A-G][^}]{0,8})\}', caseSensitive: false);
+
+  // ── chord-line detection ──────────────────────────────
+
+  /// Returns true when every non-empty token on the line is a chord symbol.
+  static bool _isChordLine(String line) {
+    final tokens = line.trim().split(RegExp(r'\s+'));
+    if (tokens.isEmpty) return false;
+    final nonEmpty = tokens.where((t) => t.isNotEmpty).toList();
+    if (nonEmpty.isEmpty) return false;
+    return nonEmpty.every(_chordRe.hasMatch);
+  }
+
+  /// Returns true when the line contains inline bracket or ChordPro chords.
+  static bool _hasInlineChords(String line) => _inlineBracketRe.hasMatch(line) || _chordProRe.hasMatch(line);
+
+  // ── chord extraction ──────────────────────────────────
+
+  /// Extracts inline bracket / ChordPro chords from [line], returning a
+  /// [ParsedLine] with the clean lyric and chord positions.
+  static ParsedLine _extractInlineChords(String line) {
+    final chords = <int, String>{};
+    final buffer = StringBuffer();
+
+    // Replace both inline formats in one pass by building a combined regex.
+    final combined = RegExp(r'\[([A-G][^\]]{0,8})\]|\{(?:chord:)?([A-G][^}]{0,8})\}', caseSensitive: false);
+
+    int offset = 0;
+    for (final m in combined.allMatches(line)) {
+      // Append lyric text before this chord marker.
+      buffer.write(line.substring(offset, m.start));
+      // The chord symbol is in group 1 (bracket) or group 2 (ChordPro).
+      final symbol = (m.group(1) ?? m.group(2) ?? '').trim();
+      if (_chordRe.hasMatch(symbol)) {
+        chords[buffer.length] = symbol;
+      }
+      offset = m.end;
+    }
+    buffer.write(line.substring(offset));
+
+    return ParsedLine(lyric: buffer.toString().trim(), chordAtCharPos: chords);
+  }
+
+  /// Parses chords from a dedicated chord line and maps them against the
+  /// following [lyricLine] using column offsets.
+  static ParsedLine _mergeChordLine(String chordLine, String lyricLine) {
+    final chords = <int, String>{};
+    // Walk the chord line token by token, recording each chord's column.
+    for (final m in RegExp(r'\S+').allMatches(chordLine)) {
+      final token = m.group(0)!;
+      if (!_chordRe.hasMatch(token)) continue;
+      // Map chord column → lyric character position (clamped).
+      final col = m.start;
+      final pos = col.clamp(0, lyricLine.length);
+      chords[pos] = token;
+    }
+    return ParsedLine(lyric: lyricLine.trim(), chordAtCharPos: chords);
+  }
+
+  // ── raw-line → ParsedLine pipeline ───────────────────
+
+  /// Converts a list of raw text lines (within one section buffer) into
+  /// [ParsedLine] objects, handling stacked, inline, and plain formats.
+  static List<ParsedLine> _cookLines(List<String> raw) {
+    final result = <ParsedLine>[];
+    int i = 0;
+    while (i < raw.length) {
+      final line = raw[i];
+
+      // Blank spacer
+      if (line.trim().isEmpty) {
+        i++;
+        continue;
+      }
+
+      // Stacked format: chord line immediately followed by lyric line
+      if (_isChordLine(line)) {
+        final next = (i + 1 < raw.length) ? raw[i + 1] : '';
+        if (next.isNotEmpty && !_isChordLine(next) && !_headerRe.hasMatch(next)) {
+          result.add(_mergeChordLine(line, next));
+          i += 2;
+        } else {
+          // Chord-only / instrumental line — no lyric follows.
+          final chords = <int, String>{};
+          int col = 0;
+          for (final m in RegExp(r'\S+').allMatches(line)) {
+            final t = m.group(0)!;
+            if (_chordRe.hasMatch(t)) {
+              chords[col++] = t;
+            }
+          }
+          // Store as lyric-empty line (instrumental).
+          result.add(ParsedLine(lyric: '', chordAtCharPos: chords));
+          i++;
+        }
+        continue;
+      }
+
+      // Inline bracket / ChordPro
+      if (_hasInlineChords(line)) {
+        result.add(_extractInlineChords(line));
+        i++;
+        continue;
+      }
+
+      // Plain lyric — no chords
+      result.add(ParsedLine(lyric: line.trim()));
+      i++;
+    }
+    return result;
+  }
+
+  // ── section-type helpers ──────────────────────────────
 
   static SectionType _typeFromLabel(String raw) {
     final l = raw.toLowerCase().replaceAll(RegExp(r'[\s\-_]'), '');
@@ -42,7 +195,9 @@ class LyricParser {
     if (l.contains('prechorus') || (l.contains('pre') && l.contains('chorus'))) {
       return SectionType.preChorus;
     }
-    if (l.contains('bridge') || l.contains('breakdown')) return SectionType.bridge;
+    if (l.contains('bridge') || l.contains('breakdown')) {
+      return SectionType.bridge;
+    }
     if (l.contains('intro')) return SectionType.intro;
     if (l.contains('outro') || l.contains('coda') || l.contains('tag')) {
       return SectionType.outro;
@@ -54,9 +209,8 @@ class LyricParser {
     return SectionType.verse;
   }
 
-  /// Strips bracket/paren/colon/dash decoration and returns a clean label.
   static String _cleanLabel(String raw) {
-    return raw.replaceAll(RegExp(r'^[\s\[(—–\-=*#]*'), '').replaceAll(RegExp(r'[\s\])\-—–=*#:,.]*$'), '').trim();
+    return raw.replaceAll(RegExp(r'^[\s\[(\u2014\u2013\-=*#]*'), '').replaceAll(RegExp(r'[\s\])\-\u2014\u2013=*#:,.]*$'), '').trim();
   }
 
   static bool _hasLabels(List<String> lines) => lines.any(_headerRe.hasMatch);
@@ -86,7 +240,7 @@ class LyricParser {
       if (currentName == null) return;
       final trimmed = _trimBlanks(buffer);
       if (trimmed.isNotEmpty) {
-        sections.add(ParsedSection(name: currentName, type: currentType, lines: List.from(trimmed)));
+        sections.add(ParsedSection(name: currentName, type: currentType, lines: _cookLines(trimmed)));
       }
       buffer.clear();
     }
@@ -108,7 +262,6 @@ class LyricParser {
   // ── smart (unlabeled) mode ────────────────────────────
 
   static List<ParsedSection> _parseUnlabeledSong(List<String> lines) {
-    // 1. Split at blank lines into blocks
     final blocks = <List<String>>[];
     var cur = <String>[];
     for (final l in lines) {
@@ -124,8 +277,18 @@ class LyricParser {
     if (cur.isNotEmpty) blocks.add(cur);
     if (blocks.isEmpty) return [];
 
-    // 2. Canonical key per block (all lines lower-cased, joined)
-    String blockKey(List<String> b) => b.map((l) => l.trim().toLowerCase()).join('|');
+    // Canonical key uses only the lyric text (chord lines stripped) so that
+    // repeated chorus blocks with different notation still match.
+    String blockKey(List<String> b) {
+      return b
+          .where((l) => !_isChordLine(l))
+          .map((l) {
+            // Strip inline chords for key comparison.
+            return l.replaceAll(_inlineBracketRe, '').replaceAll(_chordProRe, '').trim().toLowerCase();
+          })
+          .where((l) => l.isNotEmpty)
+          .join('|');
+    }
 
     final keys = blocks.map(blockKey).toList();
     final counts = <String, int>{};
@@ -133,8 +296,6 @@ class LyricParser {
       counts[k] = (counts[k] ?? 0) + 1;
     }
 
-    // 3. Determine chorus key — most repeated block (count ≥ 2).
-    //    On tie, shorter block wins (choruses tend to be shorter).
     String? chorusKey;
     int maxCount = 1;
     for (final e in counts.entries) {
@@ -143,20 +304,18 @@ class LyricParser {
         chorusKey = e.key;
       }
     }
-    // A block only appears once but 2+ other blocks repeat → still no chorus.
-    // Only promote to chorus if it appears ≥ 2 times.
     if (maxCount < 2) chorusKey = null;
 
-    // 4. Assign names and types
     int verseNum = 0;
     final sections = <ParsedSection>[];
     for (int i = 0; i < blocks.length; i++) {
       final k = keys[i];
+      final cookedLines = _cookLines(blocks[i]);
       if (k == chorusKey) {
-        sections.add(ParsedSection(name: 'Chorus', type: SectionType.chorus, lines: _trimBlanks(blocks[i])));
+        sections.add(ParsedSection(name: 'Chorus', type: SectionType.chorus, lines: cookedLines));
       } else {
         verseNum++;
-        sections.add(ParsedSection(name: 'Verse $verseNum', type: SectionType.verse, lines: _trimBlanks(blocks[i])));
+        sections.add(ParsedSection(name: 'Verse $verseNum', type: SectionType.verse, lines: cookedLines));
       }
     }
     return sections;

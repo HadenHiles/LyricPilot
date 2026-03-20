@@ -182,7 +182,31 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
     _sections.clear();
     int seq = 0;
     for (final p in parsed) {
-      final lines = p.lines.where((l) => l.trim().isNotEmpty).map((l) => _EditableLine(id: 'line_${DateTime.now().microsecondsSinceEpoch}_${seq++}', lyric: l)).toList();
+      final lines = p.lines.where((l) => l.lyric.trim().isNotEmpty || l.chordAtCharPos.isNotEmpty).map((pl) {
+        final line = _EditableLine(id: 'line_${DateTime.now().microsecondsSinceEpoch}_${seq++}', lyric: pl.lyric);
+        if (pl.hasChords) {
+          // Map character positions → nearest word index.
+          final words = _splitWords(pl.lyric);
+          for (final entry in pl.chordAtCharPos.entries) {
+            if (words.isEmpty) {
+              // Instrumental: store by insertion order.
+              line.chordByWordIndex[line.chordByWordIndex.length] = entry.value;
+              continue;
+            }
+            int closest = 0;
+            int minDist = (words[0].position - entry.key).abs();
+            for (int i = 1; i < words.length; i++) {
+              final d = (words[i].position - entry.key).abs();
+              if (d < minDist) {
+                minDist = d;
+                closest = i;
+              }
+            }
+            line.chordByWordIndex[closest] = entry.value;
+          }
+        }
+        return line;
+      }).toList();
       _sections.add(_EditableSection(id: 'id_${DateTime.now().millisecondsSinceEpoch}_${seq++}', name: p.name, type: p.type, lines: lines));
     }
     setState(() {});
@@ -952,7 +976,7 @@ class _PasteLyricsSheetState extends State<_PasteLyricsSheet> {
                         if (_preview != null) setState(() => _preview = null);
                       },
                       decoration: InputDecoration(
-                        hintText: 'Paste your song here…\n\nLabels like [Verse 1], Chorus:, or BRIDGE are detected automatically. Without labels, repeated blocks are identified as the chorus.',
+                        hintText: 'Paste your song here…\n\nLabels like [Verse 1], Chorus:, or BRIDGE are detected automatically. Without labels, repeated blocks are identified as the chorus.\n\nChords are imported automatically — stacked lines (chord line above lyric line) or inline notation like [G]word are both supported.',
                         hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.4), fontSize: 13),
                         hintMaxLines: 6,
                         filled: true,
