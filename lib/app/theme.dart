@@ -4,8 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 class AppTheme {
   AppTheme._();
 
-  // Warm amber seed — evokes stage lighting and a musician's warmth.
-  static const Color _seedColor = Color(0xFFE8A838);
+  // Brand orange gradient: #FF651E → #FF750F → #FF8401
+  static const Color brandOrangeDeep = Color(0xFFFF651E);
+  static const Color brandOrangeMid = Color(0xFFFF750F);
+  static const Color brandOrangeLight = Color(0xFFFF8401);
+
+  // M3 seed — mid orange drives the full colour scheme.
+  static const Color _seedColor = brandOrangeMid;
 
   static ThemeData get darkTheme {
     final colorScheme = ColorScheme.fromSeed(seedColor: _seedColor, brightness: Brightness.dark);
