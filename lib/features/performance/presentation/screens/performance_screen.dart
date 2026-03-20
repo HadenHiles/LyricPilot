@@ -12,7 +12,6 @@ import '../../../song_library/domain/models/song_section.dart';
 import '../../../song_library/presentation/providers/song_library_provider.dart';
 import '../../../song_library/presentation/widgets/chord_lyric_line.dart';
 import '../../domain/performance_state.dart';
-import '../../domain/playback_state.dart';
 import '../providers/performance_provider.dart';
 
 /// Full-screen performance view — Phase 3 + 4.
@@ -153,284 +152,141 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
 
 // ─── Content Layer ────────────────────────────────────────────────────────────
 
-class _ContentLayer extends StatelessWidget {
+class _ContentLayer extends StatefulWidget {
   final Song song;
   final PerformanceState state;
 
   const _ContentLayer({required this.song, required this.state});
 
   @override
+  State<_ContentLayer> createState() => _ContentLayerState();
+}
+
+class _ContentLayerState extends State<_ContentLayer> {
+  final _scrollCtrl = ScrollController();
+
+  // Maps (sectionIndex, lineIndex) → a GlobalKey for that line widget so
+  // Scrollable.ensureVisible can animate to it when the active line changes.
+  final _lineKeys = <(int, int), GlobalKey>{};
+
+  GlobalKey _keyFor(int si, int li) => _lineKeys.putIfAbsent((si, li), GlobalKey.new);
+
+  @override
+  void didUpdateWidget(_ContentLayer old) {
+    super.didUpdateWidget(old);
+    if (old.state.sectionIndex != widget.state.sectionIndex || old.state.lineIndex != widget.state.lineIndex) {
+      _scrollToActive();
+    }
+  }
+
+  void _scrollToActive() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _keyFor(widget.state.sectionIndex, widget.state.lineIndex).currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 400), curve: Curves.easeInOutCubic, alignment: 0.25);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (song.sections.isEmpty) {
+    if (widget.song.sections.isEmpty) {
       return const Center(
         child: Text('No sections in this song.', style: TextStyle(color: Colors.white38, fontSize: 18)),
       );
     }
 
-    final sectionIdx = state.sectionIndex.clamp(0, song.sections.length - 1);
-    final section = song.sections[sectionIdx];
-    final lines = section.lines;
-    final lineIdx = lines.isEmpty ? 0 : state.lineIndex.clamp(0, lines.length - 1);
+    final cs = Theme.of(context).colorScheme;
+    final activeSi = widget.state.sectionIndex;
+    final activeLi = widget.state.lineIndex;
+
+    final items = <Widget>[];
+    for (int si = 0; si < widget.song.sections.length; si++) {
+      final section = widget.song.sections[si];
+      items.add(_InlineSectionHeader(section: section));
+      items.add(const SizedBox(height: 8));
+      for (int li = 0; li < section.lines.length; li++) {
+        items.add(_LineItem(key: _keyFor(si, li), line: section.lines[li], isActive: si == activeSi && li == activeLi, activeChordIndex: (si == activeSi && li == activeLi) ? widget.state.chordIndex : -1, fontSize: widget.state.fontSize, lineSpacing: widget.state.lineSpacing, colorScheme: cs));
+      }
+      items.add(const SizedBox(height: 28));
+    }
+    // Extra bottom clearance so the last line isn't hidden behind the footer.
+    items.add(const SizedBox(height: 120));
 
     return SafeArea(
-      child: Padding(
-        // Top/bottom padding reserves space for header and footer bars.
-        padding: const EdgeInsets.fromLTRB(24, 68, 24, 84),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionBadge(section: section, sectionIndex: sectionIdx, totalSections: song.sections.length, lineIndex: lineIdx, totalLines: lines.length),
-            const SizedBox(height: 20),
-            Expanded(
-              child: _LinesView(lines: lines, activeIndex: lineIdx, activeChordIndex: state.chordIndex, fontSize: state.fontSize, lineSpacing: state.lineSpacing),
-            ),
-          ],
-        ),
+      child: SingleChildScrollView(
+        controller: _scrollCtrl,
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: items),
       ),
     );
   }
 }
 
-// ─── Section badge + line indicator ──────────────────────────────────────────
+// ─── Inline section header ────────────────────────────────────────────────────
 
-class _SectionBadge extends StatelessWidget {
+class _InlineSectionHeader extends StatelessWidget {
   final SongSection section;
-  final int sectionIndex;
-  final int totalSections;
-  final int lineIndex;
-  final int totalLines;
 
-  const _SectionBadge({required this.section, required this.sectionIndex, required this.totalSections, required this.lineIndex, required this.totalLines});
+  const _InlineSectionHeader({required this.section});
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final label = section.name.isNotEmpty ? section.name.toUpperCase() : section.type.displayName.toUpperCase();
-
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(8)),
-          child: Text(
-            label,
-            style: TextStyle(color: colorScheme.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4),
-          ),
-        ),
-        const SizedBox(width: 12),
-        if (totalLines > 0) Text('Line ${lineIndex + 1} / $totalLines', style: const TextStyle(color: Colors.white38, fontSize: 13)),
-        const Spacer(),
-        if (totalSections > 1) Text('${sectionIndex + 1} / $totalSections', style: const TextStyle(color: Colors.white24, fontSize: 12)),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(7)),
+      child: Text(
+        label,
+        style: TextStyle(color: cs.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4),
+      ),
     );
   }
 }
 
-// ─── Lines view ───────────────────────────────────────────────────────────────
+// ─── Song line item ───────────────────────────────────────────────────────────
 
-/// Spotify-style lyric display driven by a single [AnimationController].
-///
-/// [_fi] is a fractional active-index animation that moves continuously from
-/// the old integer [activeIndex] to the new one.  On every animation tick
-/// **every** derived property — y-position, font scale, opacity, accent-bar
-/// alpha, and chord tint — is computed from [_fi.value] in the same
-/// [AnimatedBuilder] pass.  There is no ListView, no Scrollable.ensureVisible,
-/// no postFrameCallback, and no frame-delayed scroll jump.
-class _LinesView extends StatefulWidget {
-  final List<SongLine> lines;
-  final int activeIndex;
+class _LineItem extends StatelessWidget {
+  final SongLine line;
+  final bool isActive;
   final int activeChordIndex;
   final double fontSize;
   final double lineSpacing;
+  final ColorScheme colorScheme;
 
-  const _LinesView({required this.lines, required this.activeIndex, required this.activeChordIndex, required this.fontSize, required this.lineSpacing});
-
-  @override
-  State<_LinesView> createState() => _LinesViewState();
-}
-
-class _LinesViewState extends State<_LinesView> with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-
-  /// Fractional active-index.  Animates 2.0 → 3.0 as the player moves from
-  /// line 2 to line 3, giving perfectly continuous transitions.
-  late Animation<double> _fi;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
-    // Start positioned correctly — no entry animation needed.
-    _fi = AlwaysStoppedAnimation(widget.activeIndex.toDouble());
-  }
-
-  @override
-  void didUpdateWidget(_LinesView old) {
-    super.didUpdateWidget(old);
-    if (!identical(old.lines, widget.lines)) {
-      // Section change — snap to the new section's first line instantly.
-      _ctrl.stop();
-      _fi = AlwaysStoppedAnimation(widget.activeIndex.toDouble());
-    } else if (old.activeIndex != widget.activeIndex) {
-      // Line advance / retreat — animate from wherever _fi currently is.
-      final from = _fi.value;
-      _fi = Tween<double>(begin: from, end: widget.activeIndex.toDouble()).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic));
-      _ctrl.forward(from: 0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  // ── Continuous visual ramps (accept fractional rel, not int) ──────────────
-
-  /// Scale: 1.0 at rel=0, tapering by ~9 % per step, floor 0.70.
-  double _scale(double rel) => (1.0 - rel.abs() * 0.092).clamp(0.70, 1.0);
-
-  /// Opacity: upcoming lines fade more gently than past lines.
-  double _opacity(double rel) {
-    if (rel >= 0) return (1.0 - rel * 0.27).clamp(0.12, 1.0);
-    return (1.0 + rel * 0.34).clamp(0.10, 1.0);
-  }
-
-  /// Chord tint: full primary colour near active, dims with distance.
-  double _chordAlpha(double rel) => rel.abs() < 0.5 ? 1.0 : (_opacity(rel) + 0.1).clamp(0.0, 1.0);
+  const _LineItem({super.key, required this.line, required this.isActive, required this.activeChordIndex, required this.fontSize, required this.lineSpacing, required this.colorScheme});
 
   @override
   Widget build(BuildContext context) {
-    if (widget.lines.isEmpty) {
-      return const Center(
-        child: Text('No lines in this section.', style: TextStyle(color: Colors.white24, fontSize: 16)),
-      );
-    }
-
-    final cs = Theme.of(context).colorScheme;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Horizontal space available inside each line's Container
-        // (17 left + 16 right padding = 33 total).
-        final contentWidth = (constraints.maxWidth - 33.0).clamp(1.0, double.infinity);
-
-        // Measure chord-row height the same way _StackedLine does so that
-        // the slot dimension matches the actual rendered chord row exactly.
-        final chordPainter = TextPainter(
-          text: TextSpan(
-            text: 'Cm7',
-            style: TextStyle(fontSize: widget.fontSize * 0.60, fontWeight: FontWeight.w700, height: 1.1),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        final chordRowH = chordPainter.height + 4.0;
-
-        // Measure the tallest lyric row in this section so the slot is wide
-        // enough to accommodate lines that wrap to multiple text rows.
-        double maxLyricH = widget.fontSize * widget.lineSpacing;
-        for (final line in widget.lines) {
-          if (line.isBlank || line.isInstrumental) continue;
-          final lp = TextPainter(
-            text: TextSpan(
-              text: line.lyric,
-              style: TextStyle(fontSize: widget.fontSize, height: widget.lineSpacing),
-            ),
-            textDirection: TextDirection.ltr,
-          )..layout(maxWidth: contentWidth);
-          if (lp.height > maxLyricH) maxLyricH = lp.height;
-        }
-
-        // slotH = chord row + tallest lyric row + container vertical
-        // padding (8+8 = 16) + inter-line gap (10).
-        final slotH = chordRowH + maxLyricH + 26.0;
-
-        // Active line anchored at 22 % from top — plenty of read-ahead below.
-        final anchorY = constraints.maxHeight * 0.22;
-
-        return ClipRect(
-          child: AnimatedBuilder(
-            animation: _fi,
-            builder: (context, _) {
-              final fi = _fi.value;
-              final items = <Widget>[];
-
-              for (var i = 0; i < widget.lines.length; i++) {
-                final rel = i - fi;
-                final yPos = anchorY + rel * slotH;
-
-                // Skip lines that are off-screen (±1 slot margin so lines
-                // animate smoothly into/out-of view from just off the edge).
-                if (yPos < -slotH || yPos > constraints.maxHeight + slotH) {
-                  continue;
-                }
-
-                final sc = _scale(rel);
-                final op = _opacity(rel);
-                final ca = _chordAlpha(rel);
-                final barA = (1.0 - rel.abs()).clamp(0.0, 1.0);
-                final pillA = barA * 0.09;
-                final isActive = rel.abs() < 0.3;
-
-                items.add(
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: yPos,
-                    child: Opacity(
-                      opacity: op,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          // Background pill — alpha tracks proximity to active.
-                          // Fixed 17 px left indent on all lines so the text
-                          // column never shifts as the accent bar fades in.
-                          Container(
-                            padding: const EdgeInsets.fromLTRB(17, 8, 16, 8),
-                            decoration: BoxDecoration(
-                              color: cs.primary.withValues(alpha: pillA),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: ChordLyricLine(
-                              line: widget.lines[i],
-                              lyricStyle: TextStyle(color: Colors.white, fontSize: widget.fontSize * sc, height: widget.lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400),
-                              chordStyle: TextStyle(
-                                color: cs.primary.withValues(alpha: ca),
-                                fontSize: widget.fontSize * 0.60 * sc,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.5,
-                                height: 1.1,
-                              ),
-                              displayMode: ChordDisplayMode.stacked,
-                              activeChordIndex: isActive ? widget.activeChordIndex : -1,
-                            ),
-                          ),
-
-                          // Left accent bar — fades in / out with barA.
-                          Positioned(
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            child: Container(
-                              width: 3,
-                              decoration: BoxDecoration(
-                                color: cs.primary.withValues(alpha: barA),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              return Stack(clipBehavior: Clip.hardEdge, children: items);
-            },
-          ),
-        );
-      },
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
+      decoration: BoxDecoration(
+        color: isActive ? colorScheme.primary.withValues(alpha: 0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: isActive ? Border(left: BorderSide(color: colorScheme.primary, width: 3)) : const Border(left: BorderSide(color: Colors.transparent, width: 3)),
+      ),
+      child: ChordLyricLine(
+        line: line,
+        lyricStyle: TextStyle(color: isActive ? Colors.white : Colors.white60, fontSize: fontSize, height: lineSpacing, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400),
+        chordStyle: TextStyle(
+          color: colorScheme.primary.withValues(alpha: isActive ? 1.0 : 0.45),
+          fontSize: fontSize * 0.60,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+          height: 1.1,
+        ),
+        displayMode: ChordDisplayMode.stacked,
+        activeChordIndex: activeChordIndex,
+      ),
     );
   }
 }
@@ -512,206 +368,65 @@ class _ControlsLayer extends StatelessWidget {
 
         const Spacer(),
 
-        // ── Footer (two rows: playback + navigation) ───────────────────────
+        // ── Footer — music-player style ────────────────────────────────────
         Container(
           color: _overlay,
           child: SafeArea(
             top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // ── Row 1: play/pause · stop · speed ─────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      // Slower
-                      IconButton(
-                        icon: const Icon(Icons.remove_circle_outline_rounded),
-                        color: Colors.white38,
-                        iconSize: 22,
-                        tooltip: 'Slower',
-                        onPressed: () {
-                          notifier.slowerScroll();
-                          onInteraction();
-                        },
-                      ),
-                      // Speed label
-                      _SpeedLabel(multiplier: state.playback.tempoMultiplier, colorScheme: cs),
-                      // Faster
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline_rounded),
-                        color: Colors.white38,
-                        iconSize: 22,
-                        tooltip: 'Faster',
-                        onPressed: () {
-                          notifier.fasterScroll();
-                          onInteraction();
-                        },
-                      ),
-                      const SizedBox(width: 16),
-                      // Play / Pause
-                      IconButton(
-                        icon: Icon(state.playback.isAdvancing ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Skip to beginning
+                  IconButton(
+                    icon: const Icon(Icons.skip_previous_rounded),
+                    color: Colors.white70,
+                    iconSize: 34,
+                    tooltip: 'Skip to beginning',
+                    onPressed: () {
+                      notifier.stop();
+                      onInteraction();
+                    },
+                  ),
+                  const SizedBox(width: 28),
+                  // Play / Pause — large circular button
+                  GestureDetector(
+                    onTap: () {
+                      notifier.togglePlayPause();
+                      onInteraction();
+                    },
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
                         color: cs.primary,
-                        iconSize: 40,
-                        tooltip: state.playback.isAdvancing ? 'Pause' : 'Play',
-                        onPressed: () {
-                          notifier.togglePlayPause();
-                          onInteraction();
-                        },
                       ),
-                      // Stop
-                      IconButton(
-                        icon: const Icon(Icons.stop_circle_outlined),
-                        color: Colors.white38,
-                        iconSize: 28,
-                        tooltip: 'Stop and reset',
-                        onPressed: () {
-                          notifier.stop();
-                          onInteraction();
-                        },
+                      child: Icon(
+                        state.playback.isAdvancing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        color: Colors.black87,
+                        size: 42,
                       ),
-                      // Ended indicator (replaces stop when ended)
-                      if (state.playbackStatus == PlaybackStatus.ended)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: Text(
-                            'END',
-                            style: TextStyle(color: cs.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2),
-                          ),
-                        ),
-                    ],
+                    ),
                   ),
-                ),
-                // ── Row 2: section/line navigation ───────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.skip_previous_rounded),
-                        color: Colors.white54,
-                        iconSize: 28,
-                        tooltip: 'Previous section',
-                        onPressed: () {
-                          notifier.prevSection();
-                          onInteraction();
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.chevron_left_rounded),
-                        color: const Color(0xDEFFFFFF),
-                        iconSize: 40,
-                        tooltip: 'Previous line',
-                        onPressed: () {
-                          notifier.prevLine();
-                          onInteraction();
-                        },
-                      ),
-                      _RepeatButton(
-                        mode: state.repeatMode,
-                        colorScheme: cs,
-                        onTap: () {
-                          notifier.cycleRepeatMode();
-                          onInteraction();
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.chevron_right_rounded),
-                        color: const Color(0xDEFFFFFF),
-                        iconSize: 40,
-                        tooltip: 'Next line',
-                        onPressed: () {
-                          notifier.nextLine();
-                          onInteraction();
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.skip_next_rounded),
-                        color: Colors.white54,
-                        iconSize: 28,
-                        tooltip: 'Next section',
-                        onPressed: () {
-                          notifier.nextSection();
-                          onInteraction();
-                        },
-                      ),
-                    ],
+                  const SizedBox(width: 28),
+                  // Skip to end
+                  IconButton(
+                    icon: const Icon(Icons.skip_next_rounded),
+                    color: Colors.white70,
+                    iconSize: 34,
+                    tooltip: 'Skip to end',
+                    onPressed: () {
+                      notifier.jumpToEnd();
+                      onInteraction();
+                    },
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-// ─── Repeat mode button ───────────────────────────────────────────────────────
-
-class _RepeatButton extends StatelessWidget {
-  final RepeatMode mode;
-  final ColorScheme colorScheme;
-  final VoidCallback onTap;
-
-  const _RepeatButton({required this.mode, required this.colorScheme, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final isActive = mode != RepeatMode.none;
-    final icon = mode == RepeatMode.line ? Icons.repeat_one_rounded : Icons.repeat_rounded;
-    final label = switch (mode) {
-      RepeatMode.none => '',
-      RepeatMode.line => 'LINE',
-      RepeatMode.section => 'SEC',
-    };
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: isActive ? colorScheme.primary : Colors.white38, size: 26),
-            if (isActive)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  label,
-                  style: TextStyle(color: colorScheme.primary, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Speed label ─────────────────────────────────────────────────────────────
-
-class _SpeedLabel extends StatelessWidget {
-  final double multiplier;
-  final ColorScheme colorScheme;
-
-  const _SpeedLabel({required this.multiplier, required this.colorScheme});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDefault = (multiplier - 1.0).abs() < 0.01;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '${multiplier.toStringAsFixed(2)}×',
-          style: TextStyle(color: isDefault ? Colors.white38 : colorScheme.primary, fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-        const Text('SPEED', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1.0)),
       ],
     );
   }
@@ -763,7 +478,7 @@ class _WelcomeOverlay extends StatelessWidget {
                     children: [
                       Icon(Icons.touch_app_rounded, color: cs.primary, size: 16),
                       const SizedBox(width: 8),
-                      const Text('Tap ▶ to auto-scroll  ·  tap lyrics to navigate', style: TextStyle(color: Colors.white60, fontSize: 13)),
+                      const Text('Scroll freely  ·  tap ▶ to auto-advance', style: TextStyle(color: Colors.white60, fontSize: 13)),
                     ],
                   ),
                 ],

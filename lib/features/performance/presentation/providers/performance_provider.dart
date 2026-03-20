@@ -62,11 +62,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
 
     // Detect end of song.
     final song = _song;
-    if (song != null &&
-        next.sectionIndex >= song.sections.length - 1 &&
-        next.lineIndex >=
-            (song.sections.last.lines.length - 1)
-                .clamp(0, song.sections.last.lines.length)) {
+    if (song != null && next.sectionIndex >= song.sections.length - 1 && next.lineIndex >= (song.sections.last.lines.length - 1).clamp(0, song.sections.last.lines.length)) {
       state = s.copyWith(
         sectionIndex: next.sectionIndex,
         lineIndex: next.lineIndex,
@@ -212,6 +208,17 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     final s = state;
     final target = s.sectionIndex > 0 ? ProgressState(sectionIndex: s.sectionIndex - 1, lineIndex: 0) : ProgressState(sectionIndex: 0, lineIndex: 0);
     state = s.copyWith(sectionIndex: target.sectionIndex, lineIndex: target.lineIndex, chordIndex: 0);
+    _engine?.manualJumpTo(target);
+  }
+
+  /// Jump to the last line of the last section (skip-to-end).
+  void jumpToEnd() {
+    final song = _song;
+    if (song == null || song.sections.isEmpty) return;
+    final lastSi = song.sections.length - 1;
+    final lastLi = (song.sections[lastSi].lines.length - 1).clamp(0, song.sections[lastSi].lines.length);
+    final target = ProgressState(sectionIndex: lastSi, lineIndex: lastLi);
+    state = state.copyWith(sectionIndex: lastSi, lineIndex: lastLi, chordIndex: 0);
     _engine?.manualJumpTo(target);
   }
 
