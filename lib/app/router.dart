@@ -15,10 +15,7 @@ final routerProvider = Provider<GoRouter>(
       // /song/new must be declared before /song/:id to avoid "new" being treated as an id.
       GoRoute(path: '/song/new', builder: (context, state) => const SongEditorScreen()),
       // Bare /song/:id redirects straight to performance — no preview screen.
-      GoRoute(
-        path: '/song/:id',
-        redirect: (_, state) => '/song/${state.pathParameters['id']}/performance',
-      ),
+      GoRoute(path: '/song/:id', redirect: (_, state) => '/song/${state.pathParameters['id']}/performance'),
       GoRoute(
         path: '/song/:id/performance',
         builder: (context, state) => PerformanceScreen(songId: state.pathParameters['id']!),

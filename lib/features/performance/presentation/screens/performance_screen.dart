@@ -322,6 +322,7 @@ class _ContentLayerState extends State<_ContentLayer> {
     }
 
     return Stack(
+      fit: StackFit.expand, // ensures SafeArea gets tight finite constraints
       children: [
         // ── Scrollable song list ────────────────────────────────────────────
         SafeArea(
