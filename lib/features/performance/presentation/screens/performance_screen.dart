@@ -313,12 +313,6 @@ class _ContentLayerState extends State<_ContentLayer> {
     final activeSi = widget.state.sectionIndex;
     final activeLi = widget.state.lineIndex;
 
-    // halfH: half the physical screen height, used as top+bottom scroll buffer
-    // so every line can be centred in the spotlight. Guard against pre-layout
-    // frames where sizeOf may return zero or non-finite values.
-    final screenH = MediaQuery.sizeOf(context).height;
-    final halfH = (screenH.isFinite && screenH > 0) ? screenH / 2 : 400.0;
-
     final contentItems = <Widget>[];
     for (int si = 0; si < widget.song.sections.length; si++) {
       final section = widget.song.sections[si];
@@ -330,48 +324,63 @@ class _ContentLayerState extends State<_ContentLayer> {
       contentItems.add(const SizedBox(height: 28));
     }
 
-    return Stack(
-      children: [
-        // ── Scrollable song list ────────────────────────────────────────────
-        // Positioned.fill derives explicit tight bounds from the Stack's own
-        // coordinate system — this prevents the tight-infinite constraint
-        // cascade that StackFit.expand causes on Android immersive transitions.
-        Positioned.fill(
-          child: SafeArea(
-            bottom: false, // footer handles its own bottom safe-area
-            child: NotificationListener<ScrollEndNotification>(
-              onNotification: (_) {
-                if (!_suppressScrollActivation) _activateNearestLine();
-                return false;
+    return SizedBox.expand(
+      // SizedBox.expand caps any infinite incoming constraints before they
+      // reach the inner Stack, making StackFit.expand safe to use here.
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ── Scrollable song list ──────────────────────────────────────────
+          SafeArea(
+            bottom: false,
+            child: LayoutBuilder(
+              // LayoutBuilder is safe here: StackFit.expand passes the finite
+              // tight constraints from SizedBox.expand through SafeArea so
+              // maxHeight is always a real screen dimension, never infinity.
+              builder: (ctx, constraints) {
+                final halfH = constraints.maxHeight > 0 ? constraints.maxHeight / 2 : 400.0;
+                return NotificationListener<ScrollEndNotification>(
+                  onNotification: (_) {
+                    if (!_suppressScrollActivation) _activateNearestLine();
+                    return false;
+                  },
+                  child: SingleChildScrollView(
+                    key: _scrollKey,
+                    controller: _scrollCtrl,
+                    padding: EdgeInsets.fromLTRB(16, halfH, 16, halfH),
+                    child: Column(
+                      // stretch forces every _LineItem / Wrap to receive tight
+                      // width = columnWidth, preventing unconstrained-width
+                      // collapses that cause items to pile at (0,0).
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: contentItems,
+                    ),
+                  ),
+                );
               },
-              child: SingleChildScrollView(
-                key: _scrollKey,
-                controller: _scrollCtrl,
-                padding: EdgeInsets.fromLTRB(16, halfH, 16, halfH),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: contentItems),
-              ),
             ),
           ),
-        ),
 
-        // ── Spotlight frame — fixed at viewport centre ───────────────────────
-        Align(
-          alignment: Alignment.center,
-          child: IgnorePointer(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeInOutCubic,
-              height: (_spotlightHeight + 16).clamp(40.0, 500.0),
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.07),
-                border: Border.all(color: cs.primary.withValues(alpha: 0.50), width: 1.5),
-                borderRadius: BorderRadius.circular(16),
+          // ── Spotlight frame — fixed at viewport centre ───────────────────
+          // Align is safe here: StackFit.expand gives it finite tight bounds.
+          Align(
+            alignment: Alignment.center,
+            child: IgnorePointer(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeInOutCubic,
+                height: (_spotlightHeight + 16).clamp(40.0, 500.0),
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.07),
+                  border: Border.all(color: cs.primary.withValues(alpha: 0.50), width: 1.5),
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
