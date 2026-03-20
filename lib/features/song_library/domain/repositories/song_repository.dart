@@ -16,7 +16,4 @@ abstract interface class SongRepository {
 
   /// Permanently removes the song with [id]. No-op if not found.
   Future<void> delete(String id);
-
-  /// Returns true if any songs are stored (used for first-launch seeding).
-  Future<bool> isEmpty();
 }

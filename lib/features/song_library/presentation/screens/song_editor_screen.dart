@@ -373,7 +373,10 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
             SliverReorderableList(
               itemCount: _sections.length,
               onReorder: _reorderSection,
-              onReorderStart: (_) => setState(() => _isDraggingSection = true),
+              onReorderStart: (_) {
+                HapticFeedback.mediumImpact();
+                setState(() => _isDraggingSection = true);
+              },
               onReorderEnd: (_) => setState(() => _isDraggingSection = false),
               proxyDecorator: _buildSectionProxy,
               itemBuilder: (ctx, i) {
@@ -512,9 +515,21 @@ class _SectionEditor extends StatefulWidget {
 
 class _SectionEditorState extends State<_SectionEditor> {
   int _lineSeq = 0;
-  bool _typePickerExpanded = false;
   bool _collapsed = false;
   bool _isDraggingLine = false;
+  final FocusNode _nameFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _nameFocusNode.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _nameFocusNode.dispose();
+    super.dispose();
+  }
 
   String _newLineId() => 'line_${DateTime.now().microsecondsSinceEpoch}_${_lineSeq++}';
 
@@ -600,35 +615,18 @@ class _SectionEditorState extends State<_SectionEditor> {
                 widget.dragHandle,
                 // Collapse chevron
                 GestureDetector(
-                  onTap: () => setState(() {
-                    _collapsed = !_collapsed;
-                    if (_collapsed) _typePickerExpanded = false;
-                  }),
+                  onTap: () => setState(() => _collapsed = !_collapsed),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Icon(isCollapsed ? Icons.chevron_right_rounded : Icons.expand_more_rounded, size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
                   ),
                 ),
-                // Tappable type label — expands type picker
-                GestureDetector(
-                  onTap: () => setState(() => _typePickerExpanded = !_typePickerExpanded),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        section.type.displayName.toUpperCase(),
-                        style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6), letterSpacing: 1.4, fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(_typePickerExpanded ? Icons.expand_less : Icons.expand_more, size: 13, color: cs.onSurfaceVariant.withValues(alpha: 0.45)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Editable name (e.g. "Verse 1")
+                // Editable section name — focusing it reveals the type-pill picker
                 Expanded(
                   child: TextField(
                     controller: section.nameCtrl,
+                    focusNode: _nameFocusNode,
+                    maxLength: 30,
                     style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     decoration: InputDecoration(
                       hintText: section.type.displayName,
@@ -636,6 +634,7 @@ class _SectionEditorState extends State<_SectionEditor> {
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                       border: InputBorder.none,
+                      counterText: '',
                     ),
                   ),
                 ),
@@ -650,61 +649,89 @@ class _SectionEditorState extends State<_SectionEditor> {
             ),
           ),
 
-          if (!isCollapsed) ...[
-            // Collapsible type picker
-            if (_typePickerExpanded)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                child: _SectionTypePicker(
-                  value: section.type,
-                  onChanged: (t) => setState(() {
-                    section.type = t;
-                    _typePickerExpanded = false;
-                  }),
-                ),
-              ),
+          // Type-pill picker — slides in when the name field is focused.
+          ClipRect(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _nameFocusNode.hasFocus
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: _SectionTypePicker(
+                        value: section.type,
+                        onChanged: (t) => setState(() {
+                          section.type = t;
+                          // Update the hint by nudging type; keep focus so user
+                          // can keep editing if they want.
+                        }),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ),
 
-            const SizedBox(height: 4),
+          // Animated collapse — wrapping in a Clip + AnimatedSize so that the
+          // height change when isOuterDragging triggers a collapse is smooth
+          // and doesn't cause SliverReorderableList to mistrack item extents.
+          ClipRect(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: isCollapsed
+                  ? const SizedBox.shrink()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 4),
 
-            // ── Lines ──────────────────────────────────────
-            ReorderableListView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              onReorder: _reorderLine,
-              onReorderStart: (_) => setState(() => _isDraggingLine = true),
-              onReorderEnd: (_) => setState(() => _isDraggingLine = false),
-              children: section.lines.asMap().entries.map((e) {
-                final idx = e.key;
-                return _LyricsFirstLineWidget(
-                  key: ValueKey(e.value.id),
-                  line: e.value,
-                  compact: _isDraggingLine,
-                  onRemove: () => _removeLine(idx),
-                  onAddLineBelow: () => _addLineAfter(idx),
-                  onDuplicate: () => _duplicateLine(idx),
-                  dragHandle: ReorderableDragStartListener(
-                    index: idx,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Icon(Icons.drag_handle_rounded, size: 16, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
+                        // ── Lines ──────────────────────────────────────
+                        ReorderableListView(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          buildDefaultDragHandles: false,
+                          onReorder: _reorderLine,
+                          onReorderStart: (_) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _isDraggingLine = true);
+                          },
+                          onReorderEnd: (_) => setState(() => _isDraggingLine = false),
+                          children: section.lines.asMap().entries.map((e) {
+                            final idx = e.key;
+                            return _LyricsFirstLineWidget(
+                              key: ValueKey(e.value.id),
+                              line: e.value,
+                              compact: _isDraggingLine,
+                              onRemove: () => _removeLine(idx),
+                              onAddLineBelow: () => _addLineAfter(idx),
+                              onDuplicate: () => _duplicateLine(idx),
+                              dragHandle: ReorderableDragStartListener(
+                                index: idx,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Icon(Icons.drag_handle_rounded, size: 16, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+
+                        // Add-line button
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                          child: TextButton.icon(
+                            onPressed: _addLineAtEnd,
+                            icon: const Icon(Icons.add, size: 15),
+                            label: const Text('Add Line'),
+                            style: TextButton.styleFrom(foregroundColor: cs.onSurfaceVariant.withValues(alpha: 0.55), textStyle: const TextStyle(fontSize: 13), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                );
-              }).toList(),
             ),
-
-            // Add-line button
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: TextButton.icon(
-                onPressed: _addLineAtEnd,
-                icon: const Icon(Icons.add, size: 15),
-                label: const Text('Add Line'),
-                style: TextButton.styleFrom(foregroundColor: cs.onSurfaceVariant.withValues(alpha: 0.55), textStyle: const TextStyle(fontSize: 13), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-              ),
-            ),
-          ],
+          ),
         ],
       ),
     );

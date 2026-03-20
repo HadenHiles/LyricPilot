@@ -67,10 +67,4 @@ class JsonFileSongRepository implements SongRepository {
     final file = _songFile(dir, id);
     if (file.existsSync()) await file.delete();
   }
-
-  @override
-  Future<bool> isEmpty() async {
-    final dir = await _songsDir();
-    return dir.listSync().whereType<File>().where((f) => f.path.endsWith('.json')).isEmpty;
-  }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/repositories/json_file_song_repository.dart';
 import '../../data/sample_songs.dart';
@@ -17,21 +18,24 @@ final songSearchQueryProvider = StateProvider<String>((ref) => '');
 
 /// The authoritative song library, backed by [SongRepository].
 ///
-/// On first launch the repository is empty — it is seeded with [sampleSongs].
-/// Exposes [save] and [delete] to mutate the library and invalidate itself.
+/// Sample songs are inserted exactly once — on first install — tracked by the
+/// 'library_seeded_v1' shared-preferences key. Subsequent launches (including
+/// after the user empties their library) never re-insert the defaults.
 @riverpod
 class SongLibraryNotifier extends _$SongLibraryNotifier {
   SongRepository get _repo => ref.read(songRepositoryProvider);
 
   @override
   Future<List<Song>> build() async {
-    final repo = _repo;
-    if (await repo.isEmpty()) {
+    final prefs = await SharedPreferences.getInstance();
+    const seedKey = 'library_seeded_v1';
+    if (prefs.getBool(seedKey) != true) {
       for (final song in sampleSongs) {
-        await repo.save(song);
+        await _repo.save(song);
       }
+      await prefs.setBool(seedKey, true);
     }
-    return repo.getAll();
+    return _repo.getAll();
   }
 
   Future<void> save(Song song) async {
@@ -40,8 +44,13 @@ class SongLibraryNotifier extends _$SongLibraryNotifier {
   }
 
   Future<void> delete(String id) async {
+    // Optimistically remove from state immediately so the Dismissible widget
+    // is gone from the tree before the next frame (avoids "still in tree" error).
+    final current = state.valueOrNull;
+    if (current != null) {
+      state = AsyncData(current.where((s) => s.id != id).toList());
+    }
     await _repo.delete(id);
-    ref.invalidateSelf();
   }
 
   Future<void> duplicate(String id) async {
