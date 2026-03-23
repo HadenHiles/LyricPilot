@@ -572,10 +572,7 @@ class _InlineSectionHeader extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isPracticed) ...[
-            Icon(Icons.check_circle_rounded, color: cs.primary, size: 14),
-            const SizedBox(width: 6),
-          ],
+          if (isPracticed) ...[Icon(Icons.check_circle_rounded, color: cs.primary, size: 14), const SizedBox(width: 6)],
           Text(
             label,
             style: TextStyle(color: cs.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4),
