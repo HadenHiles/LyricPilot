@@ -824,42 +824,98 @@ class _FooterBar extends StatelessWidget {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                icon: const Icon(Icons.skip_previous_rounded),
-                color: Colors.white70,
-                iconSize: 34,
-                tooltip: 'Skip to beginning',
-                onPressed: () {
-                  notifier.stop();
-                  onInteraction();
-                },
+              // Speed presets row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _SpeedPresetChip(
+                    label: '0.5×',
+                    multiplier: 0.5,
+                    currentMultiplier: state.playback.tempoMultiplier,
+                    onTap: () {
+                      notifier.setTempoMultiplier(0.5);
+                      onInteraction();
+                    },
+                    cs: cs,
+                  ),
+                  const SizedBox(width: 8),
+                  _SpeedPresetChip(
+                    label: '0.75×',
+                    multiplier: 0.75,
+                    currentMultiplier: state.playback.tempoMultiplier,
+                    onTap: () {
+                      notifier.setTempoMultiplier(0.75);
+                      onInteraction();
+                    },
+                    cs: cs,
+                  ),
+                  const SizedBox(width: 8),
+                  _SpeedPresetChip(
+                    label: '1×',
+                    multiplier: 1.0,
+                    currentMultiplier: state.playback.tempoMultiplier,
+                    onTap: () {
+                      notifier.setTempoMultiplier(1.0);
+                      onInteraction();
+                    },
+                    cs: cs,
+                  ),
+                  const SizedBox(width: 8),
+                  _SpeedPresetChip(
+                    label: '1.25×',
+                    multiplier: 1.25,
+                    currentMultiplier: state.playback.tempoMultiplier,
+                    onTap: () {
+                      notifier.setTempoMultiplier(1.25);
+                      onInteraction();
+                    },
+                    cs: cs,
+                  ),
+                ],
               ),
-              const SizedBox(width: 28),
-              GestureDetector(
-                onTap: () {
-                  notifier.togglePlayPause();
-                  onInteraction();
-                },
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary),
-                  child: Icon(state.playback.isAdvancing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.black87, size: 42),
-                ),
-              ),
-              const SizedBox(width: 28),
-              IconButton(
-                icon: const Icon(Icons.skip_next_rounded),
-                color: Colors.white70,
-                iconSize: 34,
-                tooltip: 'Skip to end',
-                onPressed: () {
-                  notifier.jumpToEnd();
-                  onInteraction();
-                },
+              const SizedBox(height: 12),
+              // Main playback controls
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.skip_previous_rounded),
+                    color: Colors.white70,
+                    iconSize: 34,
+                    tooltip: 'Skip to beginning',
+                    onPressed: () {
+                      notifier.stop();
+                      onInteraction();
+                    },
+                  ),
+                  const SizedBox(width: 28),
+                  GestureDetector(
+                    onTap: () {
+                      notifier.togglePlayPause();
+                      onInteraction();
+                    },
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary),
+                      child: Icon(state.playback.isAdvancing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.black87, size: 42),
+                    ),
+                  ),
+                  const SizedBox(width: 28),
+                  IconButton(
+                    icon: const Icon(Icons.skip_next_rounded),
+                    color: Colors.white70,
+                    iconSize: 34,
+                    tooltip: 'Skip to end',
+                    onPressed: () {
+                      notifier.jumpToEnd();
+                      onInteraction();
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -1054,6 +1110,35 @@ class _ThemedSlider extends StatelessWidget {
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(activeTrackColor: colorScheme.primary, thumbColor: colorScheme.primary, inactiveTrackColor: Colors.white12, overlayColor: colorScheme.primary.withValues(alpha: 0.15)),
       child: Slider(value: value, min: min, max: max, divisions: divisions, onChanged: onChanged),
+    );
+  }
+}
+
+// ─── Speed preset chip ────────────────────────────────────────────────────────
+
+/// Quick-tap speed preset button for common practice speeds.
+class _SpeedPresetChip extends StatelessWidget {
+  final String label;
+  final double multiplier;
+  final double currentMultiplier;
+  final VoidCallback onTap;
+  final ColorScheme cs;
+
+  const _SpeedPresetChip({required this.label, required this.multiplier, required this.currentMultiplier, required this.onTap, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    final isActive = (currentMultiplier - multiplier).abs() < 0.01;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(color: isActive ? cs.primary : Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+        child: Text(
+          label,
+          style: TextStyle(color: isActive ? Colors.black87 : Colors.white70, fontSize: 14, fontWeight: isActive ? FontWeight.w700 : FontWeight.w600),
+        ),
+      ),
     );
   }
 }
