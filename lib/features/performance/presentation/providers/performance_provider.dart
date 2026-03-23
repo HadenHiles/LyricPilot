@@ -95,17 +95,22 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     // Detect end of song.
     final song = _song;
     if (song != null && next.sectionIndex >= song.sections.length - 1 && next.lineIndex >= (song.sections.last.lines.length - 1).clamp(0, song.sections.last.lines.length)) {
+      // Mark final section as practiced when reaching the end.
+      final practiced = {...s.practicedSections, next.sectionIndex};
       state = s.copyWith(
         sectionIndex: next.sectionIndex,
         lineIndex: next.lineIndex,
         chordIndex: next.chordIndex,
+        practicedSections: practiced,
         playback: s.playback.copyWith(status: PlaybackStatus.ended),
       );
       _engine?.pause();
       return;
     }
 
-    state = s.copyWith(sectionIndex: next.sectionIndex, lineIndex: next.lineIndex, chordIndex: next.chordIndex);
+    // Mark section as practiced when advancing to a new section.
+    final practiced = next.sectionIndex != s.sectionIndex ? {...s.practicedSections, s.sectionIndex} : s.practicedSections;
+    state = s.copyWith(sectionIndex: next.sectionIndex, lineIndex: next.lineIndex, chordIndex: next.chordIndex, practicedSections: practiced);
   }
 
   // ── Playback control ───────────────────────────────────────────────────────
@@ -196,9 +201,11 @@ class PerformanceNotifier extends _$PerformanceNotifier {
       state = s.copyWith(lineIndex: next, chordIndex: 0);
       _engine?.manualJumpTo(ProgressState(sectionIndex: sectionIdx, lineIndex: next));
     } else {
+      // Reached end of section — mark it as practiced before advancing.
       final nextSection = sectionIdx + 1;
       if (nextSection < song.sections.length) {
-        state = s.copyWith(sectionIndex: nextSection, lineIndex: 0, chordIndex: 0);
+        final practiced = {...s.practicedSections, sectionIdx};
+        state = s.copyWith(sectionIndex: nextSection, lineIndex: 0, chordIndex: 0, practicedSections: practiced);
         _engine?.manualJumpTo(ProgressState(sectionIndex: nextSection, lineIndex: 0));
       }
     }

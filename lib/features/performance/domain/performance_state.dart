@@ -17,7 +17,7 @@ enum RepeatMode {
 /// All navigation and display preference are captured here so the view
 /// is a pure function of this value — no local widget state for position.
 class PerformanceState {
-  const PerformanceState({this.sectionIndex = 0, this.lineIndex = 0, this.chordIndex = 0, this.repeatMode = RepeatMode.none, this.sectionLoopCounter = 0, this.fontSize = defaultFontSize, this.lineSpacing = defaultLineSpacing, this.controlsVisible = true, this.isFullScreen = false, this.playback = const PlaybackState()});
+  const PerformanceState({this.sectionIndex = 0, this.lineIndex = 0, this.chordIndex = 0, this.repeatMode = RepeatMode.none, this.sectionLoopCounter = 0, this.practicedSections = const {}, this.fontSize = defaultFontSize, this.lineSpacing = defaultLineSpacing, this.controlsVisible = true, this.isFullScreen = false, this.playback = const PlaybackState()});
 
   /// Index of the currently active section in [Song.sections].
   final int sectionIndex;
@@ -34,6 +34,10 @@ class PerformanceState {
   /// Number of times the current section has been looped (0 = not looping).
   /// Increments each time we wrap from end → start of section in RepeatMode.section.
   final int sectionLoopCounter;
+
+  /// Section indices that have been completed at least once in this session.
+  /// Used to display practice indicators (checkmarks) on sections.
+  final Set<int> practicedSections;
 
   /// Base font size (sp) for the active lyric line.
   final double fontSize;
@@ -66,12 +70,13 @@ class PerformanceState {
 
   // ── copyWith ───────────────────────────────────────────────────────────────
 
-  PerformanceState copyWith({int? sectionIndex, int? lineIndex, int? chordIndex, RepeatMode? repeatMode, int? sectionLoopCounter, double? fontSize, double? lineSpacing, bool? controlsVisible, bool? isFullScreen, PlaybackState? playback}) => PerformanceState(
+  PerformanceState copyWith({int? sectionIndex, int? lineIndex, int? chordIndex, RepeatMode? repeatMode, int? sectionLoopCounter, Set<int>? practicedSections, double? fontSize, double? lineSpacing, bool? controlsVisible, bool? isFullScreen, PlaybackState? playback}) => PerformanceState(
     sectionIndex: sectionIndex ?? this.sectionIndex,
     lineIndex: lineIndex ?? this.lineIndex,
     chordIndex: chordIndex ?? this.chordIndex,
     repeatMode: repeatMode ?? this.repeatMode,
     sectionLoopCounter: sectionLoopCounter ?? this.sectionLoopCounter,
+    practicedSections: practicedSections ?? this.practicedSections,
     fontSize: fontSize ?? this.fontSize,
     lineSpacing: lineSpacing ?? this.lineSpacing,
     controlsVisible: controlsVisible ?? this.controlsVisible,

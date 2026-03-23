@@ -484,7 +484,7 @@ class _ContentLayerState extends State<_ContentLayer> {
     final contentItems = <Widget>[];
     for (int si = 0; si < widget.song.sections.length; si++) {
       final section = widget.song.sections[si];
-      contentItems.add(_InlineSectionHeader(section: section));
+      contentItems.add(_InlineSectionHeader(section: section, sectionIndex: si, isPracticed: widget.state.practicedSections.contains(si)));
       contentItems.add(const SizedBox(height: 8));
       for (int li = 0; li < section.lines.length; li++) {
         contentItems.add(_LineItem(key: _keyFor(si, li), line: section.lines[li], isActive: si == activeSi && li == activeLi, activeChordIndex: (si == activeSi && li == activeLi) ? widget.state.chordIndex : -1, fontSize: widget.state.fontSize, lineSpacing: widget.state.lineSpacing, colorScheme: cs, focusNotifier: _focusNotifierFor(si, li)));
@@ -557,8 +557,10 @@ class _ContentLayerState extends State<_ContentLayer> {
 
 class _InlineSectionHeader extends StatelessWidget {
   final SongSection section;
+  final int sectionIndex;
+  final bool isPracticed;
 
-  const _InlineSectionHeader({required this.section});
+  const _InlineSectionHeader({required this.section, required this.sectionIndex, required this.isPracticed});
 
   @override
   Widget build(BuildContext context) {
@@ -567,9 +569,18 @@ class _InlineSectionHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(7)),
-      child: Text(
-        label,
-        style: TextStyle(color: cs.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isPracticed) ...[
+            Icon(Icons.check_circle_rounded, color: cs.primary, size: 14),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: TextStyle(color: cs.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4),
+          ),
+        ],
       ),
     );
   }
@@ -1284,7 +1295,11 @@ class _TempoTapDialogState extends State<_TempoTapDialog> {
               child: Container(
                 width: 200,
                 height: 200,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary.withValues(alpha: 0.2), border: Border.all(color: cs.primary, width: 3)),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: cs.primary.withValues(alpha: 0.2),
+                  border: Border.all(color: cs.primary, width: 3),
+                ),
                 child: Center(
                   child: _detectedBpm == null
                       ? Column(
@@ -1326,7 +1341,10 @@ class _TempoTapDialogState extends State<_TempoTapDialog> {
                 onPressed: _applyTempo,
                 icon: const Icon(Icons.check_rounded),
                 label: const Text('Got it'),
-                style: TextButton.styleFrom(foregroundColor: cs.primary, textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                style: TextButton.styleFrom(
+                  foregroundColor: cs.primary,
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
               ),
             const SizedBox(height: 8),
             TextButton(
