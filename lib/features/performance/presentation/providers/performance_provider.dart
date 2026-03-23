@@ -85,7 +85,9 @@ class PerformanceNotifier extends _$PerformanceNotifier {
       final sIdx = s.sectionIndex.clamp(0, song.sections.length - 1);
       final lineCount = song.sections[sIdx].lines.length;
       final wrappedLine = next.lineIndex >= lineCount ? 0 : next.lineIndex;
-      state = s.copyWith(sectionIndex: sIdx, lineIndex: wrappedLine, chordIndex: next.chordIndex);
+      // Increment loop counter when wrapping back to start
+      final newCounter = next.lineIndex >= lineCount ? s.sectionLoopCounter + 1 : s.sectionLoopCounter;
+      state = s.copyWith(sectionIndex: sIdx, lineIndex: wrappedLine, chordIndex: next.chordIndex, sectionLoopCounter: newCounter);
       return;
     }
 
@@ -143,7 +145,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
   void stop() {
     _engine?.dispose();
     _engine = null;
-    state = state.copyWith(sectionIndex: 0, lineIndex: 0, chordIndex: 0, playback: state.playback.copyWith(status: PlaybackStatus.idle));
+    state = state.copyWith(sectionIndex: 0, lineIndex: 0, chordIndex: 0, sectionLoopCounter: 0, playback: state.playback.copyWith(status: PlaybackStatus.idle));
   }
 
   /// Increase auto-scroll speed by one step.
@@ -226,7 +228,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     if (song == null || song.sections.isEmpty) return;
     final next = state.sectionIndex + 1;
     if (next < song.sections.length) {
-      state = state.copyWith(sectionIndex: next, lineIndex: 0, chordIndex: 0);
+      state = state.copyWith(sectionIndex: next, lineIndex: 0, chordIndex: 0, sectionLoopCounter: 0);
       _engine?.manualJumpTo(ProgressState(sectionIndex: next, lineIndex: 0));
     }
   }
@@ -236,7 +238,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     if (song == null || song.sections.isEmpty) return;
     final s = state;
     final target = s.sectionIndex > 0 ? ProgressState(sectionIndex: s.sectionIndex - 1, lineIndex: 0) : ProgressState(sectionIndex: 0, lineIndex: 0);
-    state = s.copyWith(sectionIndex: target.sectionIndex, lineIndex: target.lineIndex, chordIndex: 0);
+    state = s.copyWith(sectionIndex: target.sectionIndex, lineIndex: target.lineIndex, chordIndex: 0, sectionLoopCounter: 0);
     _engine?.manualJumpTo(target);
   }
 
@@ -247,7 +249,7 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     final lastSi = song.sections.length - 1;
     final lastLi = (song.sections[lastSi].lines.length - 1).clamp(0, song.sections[lastSi].lines.length);
     final target = ProgressState(sectionIndex: lastSi, lineIndex: lastLi);
-    state = state.copyWith(sectionIndex: lastSi, lineIndex: lastLi, chordIndex: 0);
+    state = state.copyWith(sectionIndex: lastSi, lineIndex: lastLi, chordIndex: 0, sectionLoopCounter: 0);
     _engine?.manualJumpTo(target);
   }
 
@@ -259,7 +261,9 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     final safeSection = song.sections[safeSi];
     final safeLi = li.clamp(0, (safeSection.lines.length - 1).clamp(0, safeSection.lines.length));
     final target = ProgressState(sectionIndex: safeSi, lineIndex: safeLi);
-    state = state.copyWith(sectionIndex: safeSi, lineIndex: safeLi, chordIndex: 0);
+    // Reset loop counter if jumping to a different section
+    final resetCounter = safeSi != state.sectionIndex ? 0 : state.sectionLoopCounter;
+    state = state.copyWith(sectionIndex: safeSi, lineIndex: safeLi, chordIndex: 0, sectionLoopCounter: resetCounter);
     _engine?.manualJumpTo(target);
   }
 
@@ -267,7 +271,18 @@ class PerformanceNotifier extends _$PerformanceNotifier {
 
   void cycleRepeatMode() {
     final values = RepeatMode.values;
-    state = state.copyWith(repeatMode: values[(state.repeatMode.index + 1) % values.length]);
+    state = state.copyWith(repeatMode: values[(state.repeatMode.index + 1) % values.length], sectionLoopCounter: 0);
+  }
+
+  /// Toggle section loop on/off. Resets counter when toggling off or changing sections.
+  void toggleSectionLoop() {
+    if (state.repeatMode == RepeatMode.section) {
+      // Turn off: reset counter and mode
+      state = state.copyWith(repeatMode: RepeatMode.none, sectionLoopCounter: 0);
+    } else {
+      // Turn on: activate section repeat, reset counter to 0 (first pass)
+      state = state.copyWith(repeatMode: RepeatMode.section, sectionLoopCounter: 0);
+    }
   }
 
   // ── Display preferences ────────────────────────────────────────────────────

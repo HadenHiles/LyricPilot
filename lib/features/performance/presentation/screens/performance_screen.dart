@@ -800,6 +800,15 @@ class _ControlsLayer extends StatelessWidget {
                       onEdit();
                     },
                   ),
+                  // Section loop toggle with counter
+                  _SectionLoopButton(
+                    isActive: state.repeatMode == RepeatMode.section,
+                    loopCount: state.sectionLoopCounter,
+                    onPressed: () {
+                      onInteraction();
+                      notifier.toggleSectionLoop();
+                    },
+                  ),
                   IconButton(
                     icon: const Icon(Icons.tune_rounded, color: Colors.white54),
                     tooltip: 'Performance settings',
@@ -1161,6 +1170,47 @@ class _SpeedPresetChip extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(color: isActive ? Colors.black87 : Colors.white70, fontSize: 14, fontWeight: isActive ? FontWeight.w700 : FontWeight.w600),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Section loop toggle button ───────────────────────────────────────────────
+
+/// Toggle button for section loop with counter display.
+class _SectionLoopButton extends StatelessWidget {
+  final bool isActive;
+  final int loopCount;
+  final VoidCallback onPressed;
+
+  const _SectionLoopButton({required this.isActive, required this.loopCount, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: isActive ? cs.primary.withValues(alpha: 0.25) : Colors.transparent,
+          border: Border.all(color: isActive ? cs.primary : Colors.white30, width: isActive ? 2 : 1),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.repeat_rounded, color: isActive ? cs.primary : Colors.white54, size: 20),
+            if (isActive && loopCount > 0) ...[
+              const SizedBox(width: 6),
+              Text(
+                '$loopCount',
+                style: TextStyle(color: cs.primary, fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ],
         ),
       ),
     );
