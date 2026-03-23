@@ -8,12 +8,13 @@
 ## 1. Project Summary
 
 **LyricPilot** is a mobile app for musicians — primarily amateur guitarists — that
-displays lyrics and chords in a large, readable performance view and follows the
-player's pace in a hands-free way.
+helps them **practice and master songs** so they can eventually play them from memory
+without needing any prompts.
 
-It is a **smart lyric/chord teleprompter for known songs**, not a chord
-recognition engine. The user loads or creates a song ahead of time. The app
-helps display and navigate it during practice or casual performance.
+It is a **smart practice companion for known songs**, not a chord recognition engine
+or a performance teleprompter. The user loads or creates a song ahead of time. The app
+provides structured practice tools (loops, tempo control, progressive difficulty) to
+help internalize chord changes and lyrics, with the ultimate goal of "ditching the phone."
 
 Target platform: **iOS and Android** (Flutter).  
 Current phase: see `docs/roadmap.md`.
@@ -24,17 +25,16 @@ Current phase: see `docs/roadmap.md`.
 
 These rules govern every feature, architecture, and UX decision:
 
-1. Do NOT build this as a magical AI app.
-2. Do NOT promise exact chord detection from a phone microphone.
-3. Assume the expected song structure and expected chords are known ahead of time.
-4. The system **estimates** where the player is in the song — it does not identify
-   arbitrary chords from the universe.
-5. When confidence is low, **hold position** instead of jumping.
-6. The user must always be able to **manually correct** playback position.
-7. Optimize the MVP for solo acoustic guitar in a relatively quiet room.
-8. Use **graceful fallback behavior** everywhere.
-9. The app must be **useful even before audio logic exists**.
-10. Prioritize a shippable MVP over speculative DSP/ML complexity.
+1. **Practice over performance** — Build for learning and mastery, not stage use.
+2. **Progressive independence** — Help users gradually reduce reliance on the app.
+3. **Repetition is king** — Make it trivially easy to loop sections until muscle memory kicks in.
+4. **Manual control always wins** — The user is learning, so they must be able to drive the flow.
+5. **Tempo is a learning tool** — Slow down to learn, speed up to challenge.
+6. **Graceful degradation** — Every feature should work perfectly with simpler features disabled.
+7. **Known song structure** — We're not transcribing; we're helping internalize what's already known.
+8. **Audio is validation, not control** — Microphone input (Phase 7+, optional) detects activity to validate progress, not to drive scrolling.
+9. **No magical AI** — Do not promise chord transcription or singing recognition.
+10. **Optimize for solo acoustic guitar** in a practice space, not a noisy band room.
 
 ---
 
@@ -42,13 +42,13 @@ These rules govern every feature, architecture, and UX decision:
 
 The MVP is:
 
-> A musician can create or load a song with lyrics, chords, and sections, open a
-> readable performance mode, move through the song without touching the phone much,
-> use manual controls and repeat tools, and optionally benefit from simple
-> microphone-based activity detection that improves scrolling behavior.
+> A musician can create or load a song with lyrics, chords, and sections, then use
+> structured practice tools (section/line loops, tempo control, manual navigation) to
+> repeatedly practice difficult parts at their own pace until they've mastered the song
+> and no longer need the app.
 
-**MVP is NOT**: chord recognition, perfect transcription, band rehearsal support,
-cloud sync, or ML-based analysis.
+**MVP is NOT**: a stage teleprompter, chord transcription tool, band rehearsal aid,
+setlist manager, cloud sync platform, or ML-based analyzer.
 
 ---
 
@@ -76,9 +76,9 @@ lib/
   core/           # Constants, extensions, utilities — no feature logic
   features/       # One folder per product feature
     song_library/ # Song CRUD, domain models, library UI
-    performance/  # Full-screen display, scroll engine
+    performance/  # Full-screen display, scroll engine, practice tools
     settings/     # User preferences
-    audio/        # (Phase 5+) Microphone abstraction and analysis
+    audio/        # (Phase 7+, optional) Microphone abstraction and analysis
   shared/         # Reusable widgets and helpers used across features
 ```
 
@@ -113,7 +113,7 @@ Core entities (all immutable):
 | `SectionType` | song_library/domain | Enum: intro, verse, chorus, bridge, etc. |
 | `PlaybackSession` | performance/domain | (Phase 3) Active play state |
 | `ProgressState` | performance/domain | (Phase 4) Scroll/position tracking |
-| `AudioActivityState` | audio/domain | (Phase 5) Microphone signal state |
+| `AudioActivityState` | audio/domain | (Phase 7, optional) Microphone signal state |
 | `UserSettings` | settings/domain | (Phase 3) Font size, scroll speed, etc. |
 
 When adding new fields to a model, add them with a default value so existing
@@ -156,31 +156,36 @@ serialized data (Phase 2+) won't break.
 - Dark mode is the **primary** design target. Test light mode too.
 - Seed color: warm amber (`0xFFE8A838`) — musician-friendly warmth.
 - Font: `google_fonts` Inter (body), consider a monospace font for chord display.
-- Performance mode must be readable from 1–2 meters away.
-- Minimum tap targets: 48×48 dp. No tiny buttons during performance.
-- Navigation pattern: library → song detail → performance mode.
+- Practice mode must be **readable and interactive at arm's length** (phone on music stand or table).
+- Minimum tap targets: 48×48 dp. Make loop and tempo controls easy to hit mid-practice.
+- Navigation pattern: library → song detail → practice mode.
 - Always provide a clear way back. Never strand the user.
-- Avoid decorative UI elements that slow down practice setup.
+- **Practice setup should be instant** — no decorative UI that slows down starting a session.
+- **Visual feedback for progress** — show loop counts, successful repetitions, mastery indicators.
 
 ---
 
 ## 10. Audio Feature Constraints
 
+Audio is **validation, not control**. In a practice context, the user should drive the flow.
+Audio detection (Phase 7+, optional) helps confirm the player is actively practicing and can provide
+gentle nudges, but should never override manual control or jump unexpectedly.
+
 Audio must be built in layers — do NOT skip ahead:
 
-| Layer | Description | Phase |
-|---|---|---|
-| 1 | Silence vs. activity detection | 5 |
-| 2 | Onset / strum detection (energy burst) | 5 |
-| 3 | Confidence-based adaptive scrolling | 5–6 |
-| 4 | Expected nearby harmonic comparison | 6 (if justified) |
+| Layer | Description | Phase | Purpose in Practice Context |
+|---|---|---|---|
+| 1 | Silence vs. activity detection | 7 | Pause auto-advance when player stops to think |
+| 2 | Onset / strum detection (energy burst) | 7 | Validate player is on pace during timed practice |
+| 3 | Confidence-based adaptive behavior | 7–8 | Optionally slow down if player seems stuck |
+| 4 | Expected nearby harmonic comparison | 8+ (low priority) | Help detect if player is consistently early/late |
 
 Rules:
-- Audio is ONE signal among several (time elapsed, user behavior, structure).
+- Audio is **validation feedback**, not the primary driver.
 - Design audio as a **swappable interface** (`AudioAnalyzer` abstraction).
 - When uncertain, hold position. Never jump forward speculatively.
-- Do not assume ML or advanced DSP until Phase 6 and only if clearly beneficial.
 - The app must work perfectly with audio completely disabled.
+- Do not assume ML or advanced DSP until late phases and only if clearly beneficial for practice.
 
 ---
 
@@ -221,15 +226,15 @@ For every coding session:
 |---|---|---|---|
 | `/api/lrclib-lyrics` | POST | 10 / min | Fetch synced lyrics from LRClib by title + artist |
 | `/api/genius-lyrics` | POST | 10 / min | Fetch lyrics from Genius.com by title + artist |
-| `/api/recognize-chords` | POST | 2 / min | ML chord recognition from audio file (Phase 6+) |
-| `/api/detect-beats` | POST | 2 / min | Beat + BPM detection from audio file (Phase 6+) |
+| `/api/recognize-chords` | POST | 2 / min | ML chord recognition from audio file (Phase 8+, optional) |
+| `/api/detect-beats` | POST | 2 / min | Beat + BPM detection from audio file (Phase 8+, optional) |
 
-The **lyrics endpoints** are the ones relevant to letting users search and import songs — they are the only ones to build in Phase 3. Chord and beat analysis from audio are Phase 6+ only.
+The **lyrics endpoints** are the ones relevant to letting users search and import songs — they are the only ones to build in Phase 3. Chord and beat analysis from audio are Phase 8+ only (and may never be needed).
 
 ### Phase Integration
 
 - **Phase 3 (approved):** Add a "Search & Import" entry point in the song library (separate from manual creation). User types artist + title → lyrics are fetched from LRClib or Genius → a `Song` is scaffolded and opened in the editor for review/adjustment before saving.
-- **Phase 6+ (future, requires approval):** Audio upload to `/api/recognize-chords` for one-time chord chart generation when creating a song. Never use during live performance.
+- **Phase 8+ (future, may not be needed):** Audio upload to `/api/recognize-chords` for one-time chord chart generation when creating a song. Never use during live practice.
 
 ### Architecture Rules for ChordMini
 
@@ -246,7 +251,7 @@ These rules are non-negotiable. The API is a free shared service and must be tre
 1. **Debounce search input** — wait at least **600 ms** after the user stops typing before sending a lyrics request. Do not fire on every keystroke.
 2. **Client-side cooldown** — after any successful or failed API call, enforce a minimum gap before the same endpoint can be called again:
    - Lyrics endpoints: minimum **7 seconds** between calls (≈8/min head-room under the 10/min limit).
-   - Chord/beat endpoints (Phase 6+): minimum **32 seconds** between calls.
+   - Chord/beat endpoints (Phase 8+, if ever used): minimum **32 seconds** between calls.
 3. **Disable the import button** while a request is in-flight (show a loading indicator). Re-enable only after the cooldown has elapsed.
 4. **Respect `429` responses** — do NOT retry automatically. Show the user a clear message: `"Too many requests — please wait a moment and try again."` Never silently retry or loop.
 5. **No batch importing** — the import UI must import one song at a time. Do not provide a "bulk import" or automated loop that fires multiple requests in quick succession.
@@ -282,8 +287,8 @@ Until explicitly approved, do NOT implement:
 - Cloud backend or API integration (ChordMini is approved; all others are not)
 - User accounts or authentication
 - Social features (sharing, reviews, collaboration)
-- Advanced ML-based chord recognition beyond ChordMini Phase 6+ plan
-- Complex DSP signal processing
+- Advanced ML-based chord recognition beyond ChordMini Phase 8+ optional plan
+- Complex DSP signal processing (Phase 7+ audio is optional)
 - Universal chord recognition for unknown songs
 - Noisy band environment support
 - Web or desktop platform support
@@ -310,7 +315,9 @@ A phase is complete when:
 
 See `docs/roadmap.md` for the authoritative phase tracking.
 
-> Last updated: Phase 4 + karaoke UX polish + audio scaffolding complete. Phase 5 (Audio-Assisted Following) is next.
+> Last updated: Phase 4 + karaoke UX polish + audio scaffolding complete. **Phase 5 (Practice Enhancements)** is next.
+> **Roadmap strategy shift (March 2026):** Vision updated from performance teleprompter → practice/mastery tool.
+> Audio-assisted following is now **Phase 7 (optional)**, not Phase 5. Phases 5-6 focus on loops, tempo, and progressive hiding.
 >
 > **Performance view details (Phases 3–4 + polish):**
 > - Karaoke-style `ListView` with smooth scroll; active line at 25 % from top.
@@ -320,11 +327,11 @@ See `docs/roadmap.md` for the authoritative phase tracking.
 > - Initial controls stay visible 10 s (not 4 s) on first entry.
 > - `ChordLyricLine` accepts `activeChordIndex` — highlights active chord with a pill.
 > - `chordIndex` on `PerformanceState`; all nav resets it to 0 on line change.
-> - `TimedScrollEngine` drives BPM-based auto-scroll; `updateConfidence()` entry point ready for Phase 5.
+> - `TimedScrollEngine` drives BPM-based auto-scroll; `updateConfidence()` entry point ready for Phase 7 (if audio is built).
 >
-> **Audio scaffolding (Phase 5 prep — already in repo):**
+> **Audio scaffolding (Phase 7 prep — already in repo, may not be needed):**
 > - `domain/audio_activity_state.dart` — `AudioActivityState` enum (unavailable, silent, uncertain, active).
 > - `domain/audio_analyzer.dart` — `AudioAnalyzer` abstract interface + `AudioActivityCallback` typedef.
 > - `data/null_audio_analyzer.dart` — `NullAudioAnalyzer` no-op stub (no mic access).
-> - `presentation/providers/audio_analyzer_provider.dart` — `audioAnalyzerProvider` (returns `NullAudioAnalyzer`). Swap to `MicAudioAnalyzer` in Phase 5.
-> - Integration point: `PerformanceNotifier.updateConfidence(double score)` already calls `_engine?.updatePlaybackState(next)`. Phase 5 just needs to start the analyzer in `play()` and call `updateConfidence` from the activity callback.
+> - `presentation/providers/audio_analyzer_provider.dart` — `audioAnalyzerProvider` (returns `NullAudioAnalyzer`). Swap to `MicAudioAnalyzer` only if Phase 7 is built.
+> - Integration point: `PerformanceNotifier.updateConfidence(double score)` already calls `_engine?.updatePlaybackState(next)`. Phase 7 (if built) would start the analyzer in `play()` and call `updateConfidence` from the activity callback.

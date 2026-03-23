@@ -8,12 +8,13 @@ at the project root. For the phased roadmap, read `docs/roadmap.md`.
 
 ## What This App Is
 
-**LyricPilot** — a smart lyric/chord teleprompter for musicians (primarily
-acoustic guitarists). The user loads a known song; the app displays lyrics and
-chords in a large readable performance view and helps the player navigate
-hands-free.
+**LyricPilot** — a practice tool for musicians (primarily guitarists) to master
+songs through structured repetition, tempo control, and progressive independence.
+The goal: help users internalize chord changes and lyrics so they can eventually
+**"ditch the phone"** and play from memory.
 
-This is NOT a chord recognition app. The song structure is known in advance.
+This is NOT a chord recognition app or a performance teleprompter.
+The song structure is known in advance. We're building tools for **learning and mastery**.
 
 ---
 
@@ -32,7 +33,7 @@ Check `docs/roadmap.md` section "Current Status" before starting any work.
 - Models are immutable with `copyWith`. Use `const` constructors.
 - Providers live in `presentation/providers/` inside their feature.
 - Local persistence = JSON files via `path_provider` (Phase 2+). `SongRepository` abstraction — no hardcoded storage backend.
-- Audio = layered abstraction starting Phase 5. Never fake working audio.
+- Audio = optional validation layer starting Phase 7. Never fake working audio.
 
 ---
 

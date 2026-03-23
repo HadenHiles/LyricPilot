@@ -5,12 +5,33 @@
 
 ---
 
+## What This App Is
+
+**LyricPilot** is a practice tool for musicians (primarily guitarists) to master songs
+through structured repetition, tempo control, and progressive independence. The goal is
+to help users internalize chord changes and lyrics so they can eventually **"ditch the phone"**
+and play from memory.
+
+This is NOT a performance teleprompter or a chord transcription tool. It's a **practice companion** 
+for songs you already know (or are learning), with tools to loop, slow down, and gradually 
+reduce scaffolding as you build mastery.
+
+---
+
 ## Current Status
 
 **Active Phase: Phase 4 — Scroll Engine & Playback State Machine** ✅ Complete  
 **Performance View: Karaoke UX + smooth animation + welcome overlay** ✅ Complete  
 **Audio Scaffolding: AudioAnalyzer interface + NullAudioAnalyzer stub** ✅ Complete  
-**Next Phase: Phase 5 — Audio-Assisted Following MVP**
+**Next Phase: Phase 5 — Practice Enhancements (Loop Counts, Tempo Tap, Section Focus)**
+
+---
+
+## Roadmap Strategy Shift (March 2026)
+
+Vision updated from **performance teleprompter** → **practice/mastery tool**.  
+Audio-assisted following (previously Phase 5) is now **Phase 7** (lower priority).  
+New Phases 5-6 focus on **repetition, tempo tools, and progressive independence**.
 
 ---
 
@@ -292,10 +313,101 @@ user input interchangeably.
 
 ---
 
-## Phase 5 — Audio-Assisted Following MVP
+## Phase 5 — Practice Enhancements
 
-**Goal:** Use the device microphone to detect playing activity and improve
-auto-scroll confidence. No chord recognition. Layer 1 and Layer 2 audio only.
+**Goal:** Make practicing specific sections and challenging transitions effortless.
+Add tools that support deliberate, focused practice sessions.
+
+### Deliverables
+
+- [ ] **Tempo tap button** — tap 4-8 times to auto-detect/refine song BPM; updates scroll engine in real-time
+- [ ] **Section loop toggle** — simple "Loop Section" button; highlights current section, loops it until toggled off
+- [ ] **Loop counter display** — show "Loop 3" (incrementing) when section/line repeat is active
+- [ ] **Playback speed presets** — quick-tap buttons for 0.5×, 0.75×, 1×, 1.25× (complement existing ±0.25 fine control)
+- [ ] **Quick restart FAB** — jump to song start + reset speed to 1× in one tap
+- [ ] **Practice session indicators** — subtle visual marks on sections practiced this session (e.g., checkmark badge)
+
+### Dependencies to Add
+
+None (pure Dart logic + UI state extensions).
+
+### Out of Scope (Phase 5)
+
+- Transpose/capo support (players know shapes; display is just a reminder)
+- Configurable loop count targets (incrementing counter is simpler)
+- Count-in clicks (Phase 9+ if needed)
+- Visual metronome (Phase 9+ if needed)
+- Audio metronome (Phase 9+)
+- Practice analytics dashboard (Phase 8)
+- Chord/lyric hiding (Phase 6)
+
+### Exit Criteria
+
+- User can tap tempo to quickly set BPM for a new song (accurate within ±3 BPM for 40–200 BPM range)
+- User can toggle section loop on/off mid-practice without losing position
+- Loop counter increments correctly and resets when loop is disabled
+- Speed presets switch instantly without playback hiccups
+- `flutter analyze` passes
+
+### Risk Notes
+
+Low risk. Tempo tap needs debouncing and outlier rejection. Section loop is a simple state toggle.
+
+---
+
+## Phase 6 — Progressive Mastery Tools
+
+**Goal:** Help users gradually reduce dependence on the app by progressively hiding
+scaffolding (chords, lyrics) and testing recall. The ultimate goal is memorization.
+
+### Deliverables
+
+- [ ] **Chord hiding modes:**
+  - Hide all chords (lyrics only)
+  - Show only first chord of each line (prompt for the rest)
+  - Show chords on tap/hold only (test recall)
+- [ ] **Lyric hiding modes:**
+  - Hide lyrics, show only chords (for instrumental focus)
+  - Show first word of each line only (prompt for the rest)
+  - Completely blank (full memory test — advance manually)
+- [ ] **Memory test mode** — blank screen, user plays from memory, taps to reveal current position
+- [ ] **Progressive reveal** — start song with everything hidden, reveal on tap as needed
+- [ ] **Difficulty presets** — "Full Support" / "Partial Prompts" / "Memory Test"
+- [ ] **Mastery indicators** — per-song flag: "Needs Practice" / "Comfortable" / "Mastered"
+- [ ] **ChordPro import** — parse `.cho` / `.chopro` / `.txt` files in ChordPro format (huge existing library)
+- [ ] **Export to ChordPro** — save songs in portable text format
+
+### Dependencies to Add
+
+None (all Flutter UI + domain logic).
+
+### Out of Scope (Phase 6)
+
+- Automated mastery scoring (Phase 8 — track practice metrics first)
+- Spaced repetition scheduling (future)
+
+### Exit Criteria
+
+- User can successfully practice a song with full lyrics → partial prompts → memory test
+- ChordPro import correctly parses 95% of standard ChordPro files (test with real-world corpus)
+- Mastery flags persist and are visible in song library
+- `flutter analyze` passes
+
+### Risk Notes
+
+Low-medium risk. ChordPro parsing needs robust handling of edge cases and malformed files.
+
+---
+
+## Phase 7 — Audio-Assisted Following (Optional Enhancement)
+
+**Goal:** Use the device microphone to detect playing activity and validate practice
+pacing. This is **validation feedback**, not control. The user drives the flow;
+audio confirms they're on track.
+
+⚠️ **This phase is now OPTIONAL.** If manual practice tools (Phases 5-6) prove
+sufficient, audio can be deferred indefinitely. Only build if user testing shows
+clear demand for audio validation.
 
 ### Deliverables
 
@@ -307,7 +419,7 @@ auto-scroll confidence. No chord recognition. Layer 1 and Layer 2 audio only.
 - [ ] Layer 1: Silence vs. activity detection (RMS energy threshold)
 - [ ] Layer 2: Onset/strum detection (energy burst detection)
 - [ ] Feed audio signals into `PlaybackState` via `PerformanceNotifier.updateConfidence()` (entry point already wired)
-- [ ] Adaptive behavior: hold position when silent, advance when active
+- [ ] Adaptive behavior: **pause auto-advance when silent** (player is thinking/reviewing)
 - [ ] Sensitivity settings — how responsive to audio cues
 - [ ] Mute/disable audio following option
 - [ ] Debug overlay (dev-only) — shows RMS level, onset events
@@ -319,16 +431,17 @@ auto-scroll confidence. No chord recognition. Layer 1 and Layer 2 audio only.
 | record | Cross-platform microphone access |
 | permission_handler | Request mic permission at runtime |
 
-### Out of Scope (Phase 5)
+### Out of Scope (Phase 7)
 
-- Chord frequency analysis (Phase 6)
-- FFT/harmonic analysis (Phase 6)
+- Chord frequency analysis (Phase 8)
+- FFT/harmonic analysis (Phase 8)
 - ML model inference (non-goal unless compelling)
+- Using audio to **drive** scrolling (audio is validation only, not control)
 
 ### Exit Criteria
 
-- App works perfectly with audio assistance disabled
-- Activity detection meaningfully improves scroll behavior in a quiet room
+- App works perfectly with audio assistance disabled (not a regression)
+- Activity detection provides useful "you seem stuck" feedback during practice
 - Microphone permissions handled gracefully on both platforms
 - `flutter analyze` passes
 
@@ -339,68 +452,87 @@ auto-scroll confidence. No chord recognition. Layer 1 and Layer 2 audio only.
 - iOS microphone permission is strict — must justify usage in `Info.plist`
 - Latency varies across devices
 - Background noise affects all simple energy detectors
-- Do NOT promise reliable chord detection from this layer
+- **In practice context, audio is less critical** than in performance — user can manually drive
 
-If Layer 2 (onset detection) proves unreliable, keep Layer 1 (activity only)
-and document the limitation clearly.
+If Phase 7 is built and Layer 2 (onset detection) proves unreliable, keep Layer 1 
+(activity only) and document the limitation clearly. Or skip this phase entirely.
 
 ---
 
-## Phase 6 — Progressive Intelligence
+## Phase 8 — Practice Analytics & Intelligence
 
-**Goal:** Improve position tracking confidence using expected chord context.
-This is optional and speculative — only implement if Phase 5 results warrant it.
+**Goal:** Track practice sessions over time and help users identify weak sections.
+Provide data-driven feedback on mastery progress.
 
-### Deliverables (conditional)
+### Deliverables
 
-- [ ] FFT-based pitch/frequency analysis (via `fftea` or similar)
-- [ ] Expected nearby chord comparison — match against known chord list only
-- [ ] Harmonic similarity scoring — not universal recognition
-- [ ] Improved recovery behavior — use chord context to detect drift
-- [ ] Better confidence thresholds
+- [ ] **Session tracking** — log each practice session (date, duration, tempo used, sections practiced)
+- [ ] **Section practice counters** — track how many times each section has been practiced lifetime
+- [ ] **Weak section detection** — flag sections that are repeatedly looped or played at slow tempo
+- [ ] **Mastery scoring** — auto-suggest mastery level based on practice patterns (e.g., "played 10× at full speed without pausing")
+- [ ] **Practice history view** — calendar/list of past sessions per song
+- [ ] **Suggested next practice** — "You haven't practiced the bridge in 5 days"
+- [ ] **Progress visualization** — simple charts showing improvement over time
+- [ ] **(Optional) FFT-based pitch analysis** — if Phase 7 audio is implemented, add expected chord comparison
+  - Match detected harmonics against known chord list only
+  - Provide confidence score: "You seem to be playing the right chord"
+  - Help detect consistent early/late changes
 
-### Out of Scope (Phase 6)
+### Dependencies to Add
 
-- Universal chord recognition
-- Training custom ML models
-- Band/noisy environment support
+| Package | Purpose (if FFT is added) |
+|---|---|
+| fftea | FFT library for Dart (optional) |
+
+### Out of Scope (Phase 8)
+
+- Universal chord recognition (non-goal)
+- Training custom ML models (non-goal)
+- Social features / sharing practice stats (future)
+- Spaced repetition scheduling (future)
 
 ### Exit Criteria
 
-- Measurably better position tracking compared to Phase 5
-- No regressions
-- Works gracefully when signals are ambiguous
+- User can see "You've practiced this song 12 times over 3 weeks"
+- Weak sections are correctly identified and surfaced
+- Practice history survives app restarts (persisted with song data)
+- `flutter analyze` passes
 
 ### Risk Notes
 
-**HIGH RISK.** Phase 6 is speculative. Do not start until Phase 5 is proven
-in real use. If onset detection from Phase 5 is reliable enough, skip Phase 6.
+Medium risk. Balancing useful feedback vs. overwhelming users with data. Keep metrics
+simple and actionable. FFT analysis (if implemented) carries same risks as Phase 7.
 
 ---
 
-## Phase 7 — Polish & Hardening
+## Phase 9 — Polish & Hardening
 
 **Goal:** Make the app production-ready. Accessibility, error handling,
 onboarding, testing, and performance.
 
 ### Deliverables
 
-- [ ] Onboarding flow — first launch, create first song guide
-- [ ] Accessibility — semantic labels, minimum touch targets, dynamic type
-- [ ] Full error handling — empty states, load failures, permission denials
-- [ ] Unit tests — domain models, scroll engine, state machine
-- [ ] Widget tests — key screens
-- [ ] Integration tests — create song → performance mode flow
-- [ ] Performance profiling — frame rate in performance mode
+- [ ] **Practice-focused onboarding** — first launch guide emphasizing loops, tempo, and mastery goals
+- [ ] **"Quick start" tutorial** — shows how to load a song, loop a section, slow it down, hide chords
+- [ ] Accessibility — semantic labels, minimum touch targets, dynamic type, screen reader support
+- [ ] Full error handling — empty states, load failures, permission denials, corrupt song files
+- [ ] Unit tests — domain models, scroll engine, state machine, tempo tap algorithm
+- [ ] Widget tests — key screens (library, editor, practice mode)
+- [ ] Integration tests — create song → practice mode → mastery flow
+- [ ] Performance profiling — frame rate in practice mode, memory usage
 - [ ] App icons and splash screen
-- [ ] Store metadata preparation (screenshots, description)
+- [ ] Store metadata preparation (screenshots, description emphasizing **practice tool**, not performance tool)
+- [ ] Audio metronome (optional) — click track during practice (if Phase 7 audio is skipped)
+- [ ] Export/share songs as PDF or ChordPro for backup
+- [ ] **(Future consideration) Transpose/Capo support** — if user research shows demand for viewing chords in different keys
 
 ### Exit Criteria
 
 - 80%+ test coverage on core domain and engine logic
-- Passes Flutter accessibility checks
+- Passes Flutter accessibility checks (WCAG AA minimum)
 - App icon and splash present
 - Zero `flutter analyze` issues
+- App store listing clearly communicates **practice/mastery value proposition**
 
 ---
 
