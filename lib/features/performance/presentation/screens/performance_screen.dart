@@ -249,6 +249,30 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
               ),
             ),
           ),
+
+          // ── Quick restart FAB — top right corner ────────────────────────
+          Positioned(
+            top: 8,
+            right: 8,
+            child: SafeArea(
+              child: IgnorePointer(
+                ignoring: !perfState.controlsVisible,
+                child: AnimatedOpacity(
+                  opacity: perfState.controlsVisible ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: FloatingActionButton(
+                    onPressed: () {
+                      notifier.stop(); // Resets to line 0
+                      notifier.setTempoMultiplier(1.0); // Reset speed to 1×
+                      _onControlInteraction();
+                    },
+                    backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.9),
+                    child: const Icon(Icons.restart_alt_rounded, color: Colors.black87, size: 28),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
