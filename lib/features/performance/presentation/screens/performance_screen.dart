@@ -102,6 +102,13 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
     );
   }
 
+  void _showTempoTapDialog(BuildContext context, PerformanceNotifier notifier) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => _TempoTapDialog(notifier: notifier),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final song = ref.watch(songByIdProvider(widget.songId));
@@ -168,6 +175,11 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.touch_app_rounded, color: Colors.white54),
+            tooltip: 'Tap to detect tempo',
+            onPressed: () => _showTempoTapDialog(context, notifier),
+          ),
           IconButton(
             icon: const Icon(Icons.edit_outlined, color: Colors.white54),
             tooltip: 'Edit song',
@@ -1210,6 +1222,117 @@ class _SectionLoopButton extends StatelessWidget {
                 style: TextStyle(color: cs.primary, fontSize: 13, fontWeight: FontWeight.w700),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Tempo tap dialog ──────────────────────────────────────────────────────────
+
+/// Dialog for detecting BPM by tapping — tap 4-8 times to calculate tempo.
+class _TempoTapDialog extends StatefulWidget {
+  final PerformanceNotifier notifier;
+
+  const _TempoTapDialog({required this.notifier});
+
+  @override
+  State<_TempoTapDialog> createState() => _TempoTapDialogState();
+}
+
+class _TempoTapDialogState extends State<_TempoTapDialog> {
+  int _tapCount = 0;
+  double? _detectedBpm;
+
+  void _onTap() {
+    final (tapCount, bpm) = widget.notifier.tapTempo();
+    setState(() {
+      _tapCount = tapCount;
+      if (bpm != null) {
+        _detectedBpm = bpm;
+      }
+    });
+  }
+
+  void _applyTempo() {
+    if (_detectedBpm == null) return;
+    // Calculate multiplier: detected BPM / original BPM (assume 120 as default)
+    // For now, just close — user can adjust via speed presets
+    // TODO(phase-5): enhance with actual BPM storage in Song model
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Dialog(
+      backgroundColor: const Color(0xFF1C1B1F),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Tap to Detect Tempo',
+              style: TextStyle(color: Color(0xDEFFFFFF), fontSize: 20, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 32),
+            GestureDetector(
+              onTap: _onTap,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary.withValues(alpha: 0.2), border: Border.all(color: cs.primary, width: 3)),
+                child: Center(
+                  child: _detectedBpm == null
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.touch_app_rounded, color: cs.primary, size: 48),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Tap $_tapCount/4',
+                              style: TextStyle(color: cs.primary, fontSize: 18, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${_detectedBpm!.round()}',
+                              style: TextStyle(color: cs.primary, fontSize: 56, fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              'BPM',
+                              style: TextStyle(color: cs.primary, fontSize: 18, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            if (_detectedBpm == null)
+              const Text(
+                'Tap at least 4 times\nat your desired tempo',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, fontSize: 14),
+              )
+            else
+              TextButton.icon(
+                onPressed: _applyTempo,
+                icon: const Icon(Icons.check_rounded),
+                label: const Text('Got it'),
+                style: TextButton.styleFrom(foregroundColor: cs.primary, textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
           ],
         ),
       ),
