@@ -20,10 +20,11 @@ reduce scaffolding as you build mastery.
 
 ## Current Status
 
-**Active Phase: Phase 4 — Scroll Engine & Playback State Machine** ✅ Complete  
+**Active Phase: Phase 5 — Practice Enhancements** ✅ Complete  
 **Performance View: Karaoke UX + smooth animation + welcome overlay** ✅ Complete  
 **Audio Scaffolding: AudioAnalyzer interface + NullAudioAnalyzer stub** ✅ Complete  
-**Next Phase: Phase 5 — Practice Enhancements (Loop Counts, Tempo Tap, Section Focus)**
+**Practice Tools: Speed presets, tempo tap, section loop, practice indicators** ✅ Complete  
+**Next Phase: Phase 6 — Progressive Mastery Tools**
 
 ---
 
@@ -320,12 +321,12 @@ Add tools that support deliberate, focused practice sessions.
 
 ### Deliverables
 
-- [ ] **Tempo tap button** — tap 4-8 times to auto-detect/refine song BPM; updates scroll engine in real-time
-- [ ] **Section loop toggle** — simple "Loop Section" button; highlights current section, loops it until toggled off
-- [ ] **Loop counter display** — show "Loop 3" (incrementing) when section/line repeat is active
-- [ ] **Playback speed presets** — quick-tap buttons for 0.5×, 0.75×, 1×, 1.25× (complement existing ±0.25 fine control)
-- [ ] **Quick restart FAB** — jump to song start + reset speed to 1× in one tap
-- [ ] **Practice session indicators** — subtle visual marks on sections practiced this session (e.g., checkmark badge)
+- [x] **Tempo tap button** — tap 4-8 times to auto-detect/refine song BPM; updates scroll engine in real-time
+- [x] **Section loop toggle** — simple "Loop Section" button; highlights current section, loops it until toggled off
+- [x] **Loop counter display** — show "Loop 3" (incrementing) when section/line repeat is active
+- [x] **Playback speed presets** — quick-tap buttons for 0.5×, 0.75×, 1×, 1.25× (complement existing ±0.25 fine control)
+- [x] **Quick restart FAB** — jump to song start + reset speed to 1× in one tap
+- [x] **Practice session indicators** — subtle visual marks on sections practiced this session (e.g., checkmark badge)
 
 ### Dependencies to Add
 
