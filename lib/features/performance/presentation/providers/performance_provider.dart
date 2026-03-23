@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../song_library/domain/models/song.dart';
 import '../../../song_library/presentation/providers/song_library_provider.dart';
+import '../../data/tempo_tap_detector.dart';
 import '../../data/timed_scroll_engine.dart';
 import '../../domain/performance_state.dart';
 import '../../domain/playback_state.dart';
@@ -20,7 +21,7 @@ part 'performance_provider.g.dart';
 class PerformanceNotifier extends _$PerformanceNotifier {
   ScrollEngine? _engine;
   bool _disposed = false;
-
+  final _tempoTap = TempoTapDetector();
   static const _kFontSize = 'perf_font_size';
   static const _kLineSpacing = 'perf_line_spacing';
   static const _kTempo = 'perf_tempo';
@@ -304,6 +305,26 @@ class PerformanceNotifier extends _$PerformanceNotifier {
     state = state.copyWith(playback: next);
     _engine?.updatePlaybackState(next);
     _saveDisplayPrefs();
+  }
+
+  // ── Tempo tap detection ────────────────────────────────────────────────────
+
+  /// Record a tap for tempo detection. Returns tap count and detected BPM (if ready).
+  (int tapCount, double? bpm) tapTempo() {
+    _tempoTap.tap();
+    final bpm = _tempoTap.calculateBpm();
+
+    // Auto-reset after successful detection so user can start fresh
+    if (bpm != null) {
+      _tempoTap.reset();
+    }
+
+    return (_tempoTap.tapCount, bpm);
+  }
+
+  /// Reset tempo tap state (e.g., user wants to start over).
+  void resetTempoTap() {
+    _tempoTap.reset();
   }
 
   // ── Full-screen toggle ────────────────────────────────────────────────────
