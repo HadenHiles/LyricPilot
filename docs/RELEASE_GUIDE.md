@@ -95,6 +95,78 @@ The output files will be in:
 
 ---
 
+## Alternative Android Distribution (Direct APK)
+
+If you want to distribute outside of Google Play Store (to avoid the 20-user testing requirement), you can distribute the APK directly:
+
+### Distribution Methods
+
+1. **Direct Download from Website**
+   - Host the APK on your own website or file hosting service
+   - Provide a download link to users
+   - Example services: GitHub Releases, Firebase App Distribution, Dropbox, Google Drive
+
+2. **GitHub Releases** (Recommended)
+   - Go to your repository on GitHub
+   - Click "Releases" → "Create a new release"
+   - Tag version (e.g., `v1.0.0`)
+   - Upload `app-release.apk` as an asset
+   - Publish release
+   - Users can download directly from GitHub
+
+3. **Firebase App Distribution**
+   - Free service from Google
+   - Invite testers via email
+   - Automatic notifications for new releases
+   - Visit: https://firebase.google.com/products/app-distribution
+
+4. **Third-Party App Stores**
+   - Amazon Appstore (requires separate submission)
+   - Samsung Galaxy Store
+   - F-Droid (for open-source apps)
+   - APKPure, APKMirror (user-uploaded)
+
+### Important: Installation Instructions for Users
+
+When users download your APK, they'll need to:
+
+1. **Enable "Unknown Sources" or "Install Unknown Apps"**:
+   - Settings → Security → Unknown Sources (Android 7 and older)
+   - Settings → Apps → Special Access → Install Unknown Apps (Android 8+)
+   - Select the browser/app used to download and enable installation
+
+2. **Download the APK** to their device
+
+3. **Open the APK file** from Downloads or notification
+
+4. **Tap "Install"** and follow prompts
+
+### Security Warning Notice
+
+Always inform users that your app is safe. Consider providing:
+- SHA-256 hash of the APK for verification
+- Clear instructions on where to download from
+- Warning not to download from unofficial sources
+
+### APK Location
+
+After building, your signed release APK is located at:
+```
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+You can also build split APKs per ABI (smaller file sizes):
+```bash
+flutter build apk --release --split-per-abi
+```
+
+This creates:
+- `app-armeabi-v7a-release.apk` (older 32-bit devices)
+- `app-arm64-v8a-release.apk` (modern 64-bit devices, most common)
+- `app-x86_64-release.apk` (emulators, some tablets)
+
+---
+
 ## iOS Release (Apple App Store)
 
 ### Prerequisites
