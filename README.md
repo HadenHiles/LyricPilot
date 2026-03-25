@@ -29,7 +29,7 @@ Alternatively, download from [itch.io](https://hadenhiles.itch.io/lyric-pilot)
 
 ## Screenshots
 
-<details>
+<details open>
 <summary>View Screenshots</summary>
 
 <br>
