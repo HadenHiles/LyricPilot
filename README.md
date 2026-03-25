@@ -29,9 +29,25 @@ Alternatively, download from [itch.io](https://hadenhiles.itch.io/lyric-pilot)
 
 ## Screenshots
 
-![Preview](assets/lyric-pilot-preview.jpg)
+<details>
+<summary>View Screenshots</summary>
 
-_More screenshots available on the [itch.io page](https://hadenhiles.itch.io/lyric-pilot)_
+<br>
+
+<table>
+  <tr>
+    <td><img src="assets/screenshots/1.jpg" width="180"/></td>
+    <td><img src="assets/screenshots/2.jpg" width="180"/></td>
+    <td><img src="assets/screenshots/3.jpg" width="180"/></td>
+  </tr>
+  <tr>
+    <td><img src="assets/screenshots/4.jpg" width="180"/></td>
+    <td><img src="assets/screenshots/5.jpg" width="180"/></td>
+    <td></td>
+  </tr>
+</table>
+
+</details>
 
 ## Development
 
